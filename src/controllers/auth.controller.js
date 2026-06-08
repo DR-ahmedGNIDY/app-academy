@@ -22,8 +22,11 @@ const login = async (req, res, next) => {
 
   logger.info(`User logged in: ${user.email} [${user.role}]`);
 
-  return sendSuccess(res, {
+  return res.status(200).json({
+    success: true,
     message: 'تم تسجيل الدخول بنجاح',
+    token,
+    refreshToken,
     data: {
       _id: user._id,
       name: user.name,
@@ -33,7 +36,6 @@ const login = async (req, res, next) => {
       academy_name: user.academyId ? user.academyId.name : null,
       created_at: user.created_at,
     },
-    statusCode: 200,
   });
 };
 

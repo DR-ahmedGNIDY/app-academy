@@ -9,7 +9,7 @@ const {
   getSubscriptionsByAcademy,
   getRevenueSummary,
 } = require('../controllers/subscription.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
@@ -64,11 +64,11 @@ const notesValidators = [
 // GET  /subscriptions/player/:playerId
 router.get('/player/:playerId', getSubscriptionsByPlayer);
 
-// GET  /subscriptions/academy/:academyId/revenue
-router.get('/academy/:academyId/revenue', getRevenueSummary);
+// GET  /subscriptions/academy/:academyId/revenue — admin blocked
+router.get('/academy/:academyId/revenue', restrictTo('super_admin', 'academy_admin'), getRevenueSummary);
 
-// GET  /subscriptions/academy/:academyId
-router.get('/academy/:academyId', getSubscriptionsByAcademy);
+// GET  /subscriptions/academy/:academyId — admin blocked (uses player-level access instead)
+router.get('/academy/:academyId', restrictTo('super_admin', 'academy_admin'), getSubscriptionsByAcademy);
 
 // GET  /subscriptions/:id
 router.get('/:id', getSubscriptionById);

@@ -26,14 +26,14 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['super_admin', 'academy_admin'],
+      enum: ['super_admin', 'academy_admin', 'admin'],
       default: 'academy_admin',
     },
     academyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Academy',
       required: function () {
-        return this.role === 'academy_admin';
+        return this.role === 'academy_admin' || this.role === 'admin';
       },
     },
     isActive: {

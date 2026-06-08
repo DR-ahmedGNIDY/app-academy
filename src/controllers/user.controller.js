@@ -6,10 +6,14 @@ const logger = require('../utils/logger');
 
 /**
  * POST /api/v1/users
- * super_admin only — creates a new academy_admin user
+ * super_admin only — creates academy_admin or admin users
  */
 const createUser = async (req, res, next) => {
-  const { name, email, password, academyId } = req.body;
+  // ── TRACE: طباعة كل ما وصل في req.body ──────────────────────────────────
+  console.log('[createUser] req.body =', JSON.stringify(req.body));
+  console.log('[createUser] req.body.role =', req.body.role);
+  // ─────────────────────────────────────────────────────────────────────────
+  const { name, email, password, academyId, role: requestedRole } = req.body;
 
   // Verify the target academy exists and is active
   const academy = await Academy.findById(academyId);
@@ -26,11 +30,16 @@ const createUser = async (req, res, next) => {
     return next(new AppError('البريد الإلكتروني مستخدم بالفعل', 409));
   }
 
+  // super_admin can create academy_admin or admin; default to academy_admin
+  const allowedRoles = ['academy_admin', 'admin'];
+  const newRole = allowedRoles.includes(requestedRole) ? requestedRole : 'academy_admin';
+  logger.info(`createUser — requestedRole="${requestedRole}" → newRole="${newRole}"`);
+
   const user = await User.create({
     name,
     email,
     password,
-    role: 'academy_admin',
+    role: newRole,
     academyId,
   });
 
@@ -170,9 +179,9 @@ const deactivateUser = async (req, res, next) => {
 const getUsersByAcademy = async (req, res, next) => {
   const { academyId } = req.params;
 
-  // academy_admin may only query their own academy
+  // academy_admin and admin may only query their own academy
   if (
-    req.user.role === 'academy_admin' &&
+    (req.user.role === 'academy_admin' || req.user.role === 'admin') &&
     req.user.academyId?.toString() !== academyId
   ) {
     return next(new AppError('ليس لديك صلاحية للوصول إلى مستخدمي هذه الأكاديمية', 403));
@@ -205,9 +214,9 @@ const getUserById = async (req, res, next) => {
     return next(new AppError('المستخدم غير موجود', 404));
   }
 
-  // academy_admin can only see users from their own academy
+  // academy_admin and admin can only see users from their own academy
   if (
-    req.user.role === 'academy_admin' &&
+    (req.user.role === 'academy_admin' || req.user.role === 'admin') &&
     user.academyId?._id?.toString() !== req.user.academyId?.toString()
   ) {
     return next(new AppError('ليس لديك صلاحية للوصول إلى هذا المستخدم', 403));
