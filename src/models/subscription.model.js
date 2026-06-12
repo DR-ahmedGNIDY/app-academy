@@ -52,7 +52,17 @@ const subscriptionSchema = new mongoose.Schema(
       transform: function (doc, ret) {
         ret._id = ret._id.toString();
         ret.academyId = ret.academyId?.toString();
-        ret.playerId = ret.playerId?.toString();
+
+        // إذا كان playerId مُحمَّلاً (populated object) نحتفظ به كـ object
+        // ونحوّل فقط الـ _id الداخلي إلى string
+        // إذا كان ObjectId عادياً نحوّله إلى string
+        if (ret.playerId && typeof ret.playerId === 'object' && ret.playerId._id !== undefined) {
+          // populated — stringify the nested _id only
+          ret.playerId._id = ret.playerId._id?.toString();
+        } else if (ret.playerId) {
+          ret.playerId = ret.playerId.toString();
+        }
+
         delete ret.__v;
         return ret;
       },
