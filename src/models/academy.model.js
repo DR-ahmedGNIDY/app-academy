@@ -30,6 +30,32 @@ const academySchema = new mongoose.Schema(
       trim: true,
       maxlength: [300, 'العنوان لا يمكن أن يتجاوز 300 حرف'],
     },
+    currency: {
+      type: String,
+      enum: {
+        values: ['EGP', 'SAR', 'KWD', 'USD'],
+        message: 'العملة غير صحيحة',
+      },
+      // الأكاديميات الحالية تبقى على الجنيه المصري (هجرة آمنة)
+      default: 'EGP',
+    },
+    // الرياضات الموجودة بالأكاديمية (Multi-sport support).
+    // قائمة نصية حرّة قابلة للتوسعة مستقبلاً بأي رياضة.
+    // الأكاديميات الحالية تُهاجَر تلقائياً إلى رياضة واحدة فيستمر النظام كما هو.
+    sports: {
+      type: [String],
+      default: ['كرة سلة'],
+      validate: {
+        validator: function (arr) {
+          return (
+            Array.isArray(arr) &&
+            arr.length > 0 &&
+            arr.every((s) => typeof s === 'string' && s.trim().length > 0)
+          );
+        },
+        message: 'يجب اختيار رياضة واحدة على الأقل',
+      },
+    },
     isActive: {
       type: Boolean,
       default: true,

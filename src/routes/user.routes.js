@@ -3,6 +3,7 @@ const { body, param } = require('express-validator');
 const {
   createUser,
   updateUser,
+  resetUserPassword,
   deleteUser,
   activateUser,
   deactivateUser,
@@ -87,6 +88,19 @@ router.put(
   updateUserValidators,
   validate,
   updateUser
+);
+
+// PATCH /api/v1/users/:id/reset-password — super_admin only
+router.patch(
+  '/:id/reset-password',
+  protect,
+  restrictTo('super_admin'),
+  mongoIdParam('id'),
+  body('newPassword')
+    .notEmpty().withMessage('كلمة المرور الجديدة مطلوبة')
+    .isLength({ min: 8 }).withMessage('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل'),
+  validate,
+  resetUserPassword
 );
 
 // DELETE /api/v1/users/:id — super_admin only (soft delete)

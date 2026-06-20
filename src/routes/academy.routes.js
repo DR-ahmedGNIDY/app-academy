@@ -19,6 +19,8 @@ const academyValidators = [
     .matches(/^[0-9+\-\s()]{7,20}$/).withMessage('رقم الهاتف غير صحيح'),
   body('address').notEmpty().withMessage('العنوان مطلوب')
     .isLength({ max: 300 }).withMessage('العنوان لا يمكن أن يتجاوز 300 حرف'),
+  body('currency').optional()
+    .isIn(['EGP', 'SAR', 'KWD', 'USD']).withMessage('العملة غير صحيحة'),
 ];
 
 router.route('/')

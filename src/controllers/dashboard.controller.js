@@ -333,6 +333,63 @@ const getRecentActivities = async (req, res, next) => {
   });
 };
 
+// GET /api/v1/dashboard/sport-stats?sport=...&academyId=...
+// Per-sport statistics: players count, active/expired subscriptions,
+// revenue, and the latest players — all scoped to a single sport.
+const getSportStats = async (req, res, next) => {
+  const match = buildAcademyMatch(req);
+  const sport = req.query.sport ? String(req.query.sport).trim() : '';
+  if (!sport) return next(new AppError('الرياضة مطلوبة', 400));
+
+  const now = new Date();
+  const playerMatch = { ...match, sport, isActive: true };
+
+  const [totalPlayers, recentPlayers, subStats] = await Promise.all([
+    Player.countDocuments(playerMatch),
+
+    Player.find(playerMatch)
+      .sort({ created_at: -1 })
+      .limit(5)
+      .select('playerCode fullName image_url birthDate sport created_at'),
+
+    // Subscriptions joined to their player, filtered by the player's sport.
+    Subscription.aggregate([
+      { $match: match },
+      {
+        $lookup: {
+          from: 'players',
+          localField: 'playerId',
+          foreignField: '_id',
+          as: 'player',
+        },
+      },
+      { $unwind: '$player' },
+      { $match: { 'player.sport': sport } },
+      {
+        $facet: {
+          active: [{ $match: { endDate: { $gte: now } } }, { $count: 'count' }],
+          expired: [{ $match: { endDate: { $lt: now } } }, { $count: 'count' }],
+          revenue: [{ $group: { _id: null, total: { $sum: '$amount' } } }],
+        },
+      },
+    ]),
+  ]);
+
+  const subs = subStats[0] || {};
+  const extract = (a) => (a && a[0] ? a[0] : {});
+
+  sendSuccess(res, {
+    data: {
+      sport,
+      totalPlayers: totalPlayers || 0,
+      activeSubscriptions: extract(subs.active).count || 0,
+      expiredSubscriptions: extract(subs.expired).count || 0,
+      revenue: extract(subs.revenue).total || 0,
+      recentPlayers,
+    },
+  });
+};
+
 module.exports = {
   getDashboardStats,
   getRevenueByMonth,
@@ -340,4 +397,5 @@ module.exports = {
   getPlayersByBirthYear,
   getEvaluationDistribution,
   getRecentActivities,
+  getSportStats,
 };

@@ -4,6 +4,25 @@ const { sendSuccess } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 
+// Normalize the `sports` field coming from multipart/form-data.
+// Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
+const parseSports = (raw) => {
+  if (raw === undefined || raw === null) return undefined;
+  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+    } catch (_) {
+      // not JSON — fall through to comma-split
+    }
+    return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return undefined;
+};
+
 const getAcademies = async (req, res, next) => {
   let query = { isActive: true };
 
@@ -32,12 +51,15 @@ const getAcademyById = async (req, res, next) => {
 };
 
 const createAcademy = async (req, res, next) => {
-  const { name, phone, address } = req.body;
+  const { name, phone, address, currency } = req.body;
+  const sports = parseSports(req.body.sports);
 
   const academy = await Academy.create({
     name,
     phone,
     address,
+    currency: currency || 'EGP',
+    ...(sports && sports.length ? { sports } : {}),
     logo_url: req.file ? req.file.path : null,
     logo_public_id: req.file ? req.file.filename : null,
   });
@@ -66,6 +88,10 @@ const updateAcademy = async (req, res, next) => {
   if (req.body.name) academy.name = req.body.name;
   if (req.body.phone) academy.phone = req.body.phone;
   if (req.body.address) academy.address = req.body.address;
+  if (req.body.currency) academy.currency = req.body.currency;
+
+  const sports = parseSports(req.body.sports);
+  if (sports && sports.length) academy.sports = sports;
 
   await academy.save();
   logger.info(`Academy updated: ${academy.name} by ${req.user.email}`);

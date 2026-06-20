@@ -90,6 +90,28 @@ const updateUser = async (req, res, next) => {
 };
 
 /**
+ * PATCH /api/v1/users/:id/reset-password
+ * super_admin only — sets a new password for any user.
+ * Uses the same bcrypt hashing via the user model pre-save hook.
+ */
+const resetUserPassword = async (req, res, next) => {
+  const { newPassword } = req.body;
+
+  // select +password so the pre-save hook re-hashes correctly
+  const user = await User.findById(req.params.id).select('+password');
+  if (!user) {
+    return next(new AppError('المستخدم غير موجود', 404));
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  logger.info(`Password reset for user: ${user.email} by ${req.user.email}`);
+
+  return sendSuccess(res, { message: 'تم تغيير كلمة مرور المستخدم بنجاح' });
+};
+
+/**
  * DELETE /api/v1/users/:id
  * super_admin only — soft delete (isActive = false)
  */
@@ -228,6 +250,7 @@ const getUserById = async (req, res, next) => {
 module.exports = {
   createUser,
   updateUser,
+  resetUserPassword,
   deleteUser,
   activateUser,
   deactivateUser,

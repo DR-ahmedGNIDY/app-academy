@@ -37,6 +37,12 @@ const createValidators = [
   body('parentPhone')
     .notEmpty().withMessage('رقم هاتف ولي الأمر مطلوب')
     .matches(/^[0-9+\-\s()]{7,20}$/).withMessage('رقم الهاتف غير صحيح'),
+  body('playerPhone')
+    .optional({ checkFalsy: true })
+    .matches(/^[0-9+\-\s()]{7,20}$/).withMessage('رقم هاتف اللاعب غير صحيح'),
+  body('sport')
+    .optional({ checkFalsy: true })
+    .isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
 ];
 
 const updateValidators = [
@@ -56,6 +62,12 @@ const updateValidators = [
   body('parentPhone')
     .optional()
     .matches(/^[0-9+\-\s()]{7,20}$/).withMessage('رقم الهاتف غير صحيح'),
+  body('playerPhone')
+    .optional({ checkFalsy: true })
+    .matches(/^[0-9+\-\s()]{7,20}$/).withMessage('رقم هاتف اللاعب غير صحيح'),
+  body('sport')
+    .optional({ checkFalsy: true })
+    .isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
 ];
 
 // ─── Routes ──────────────────────────────────────────────────────────────────

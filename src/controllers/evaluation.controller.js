@@ -60,17 +60,17 @@ const getEvaluationsByPlayer = async (req, res, next) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
   const skip = (page - 1) * limit;
 
-  // Academy admin: verify player belongs to their academy
-  if (req.user.role === 'academy_admin') {
-    const player = await verifyPlayerAcademy(playerId, req.user.academyId, next);
-    if (!player) return;
-  } else {
-    // super_admin: just verify player exists
-    const player = await Player.findById(playerId);
-    if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  // Verify player exists and get its academyId for scoping
+  const player = await Player.findById(playerId);
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+
+  if (req.user.role === 'academy_admin' &&
+      player.academyId.toString() !== req.user.academyId?.toString()) {
+    return next(new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403));
   }
 
-  const filter = { playerId };
+  // Scope filter by both playerId and academyId for strict isolation
+  const filter = { playerId, academyId: player.academyId };
 
   const [evaluations, total] = await Promise.all([
     Evaluation.find(filter)
@@ -94,17 +94,15 @@ const getEvaluationsByPlayer = async (req, res, next) => {
 const getLatestEvaluation = async (req, res, next) => {
   const { playerId } = req.params;
 
-  // Academy admin: verify player belongs to their academy
-  if (req.user.role === 'academy_admin') {
-    const player = await verifyPlayerAcademy(playerId, req.user.academyId, next);
-    if (!player) return;
-  } else {
-    // super_admin: just verify player exists
-    const player = await Player.findById(playerId);
-    if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  const player = await Player.findById(playerId);
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+
+  if (req.user.role === 'academy_admin' &&
+      player.academyId.toString() !== req.user.academyId?.toString()) {
+    return next(new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403));
   }
 
-  const evaluation = await Evaluation.findOne({ playerId })
+  const evaluation = await Evaluation.findOne({ playerId, academyId: player.academyId })
     .sort({ evaluationDate: -1 })
     .limit(1)
     .populate('evaluatorId', 'name');

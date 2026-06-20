@@ -1,6 +1,6 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { login, logout, getMe, changePassword } = require('../controllers/auth.controller');
+const { login, logout, getMe, updateMe, changePassword } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 
@@ -13,6 +13,11 @@ router.post('/login', [
 
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
+
+router.patch('/me', protect, [
+  body('name').notEmpty().withMessage('الاسم مطلوب')
+    .isLength({ min: 2, max: 100 }).withMessage('الاسم يجب أن يكون بين 2 و 100 حرف'),
+], validate, updateMe);
 
 router.patch('/change-password', protect, [
   body('currentPassword').notEmpty().withMessage('كلمة المرور الحالية مطلوبة'),

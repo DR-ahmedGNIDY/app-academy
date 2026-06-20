@@ -58,9 +58,40 @@ const playerSchema = new mongoose.Schema(
       trim: true,
       match: [/^[0-9+\-\s()]{7,20}$/, 'رقم الهاتف غير صحيح'],
     },
+    playerPhone: {
+      type: String,
+      trim: true,
+      // اختياري — يُقبل فارغاً، ويُتحقق من الصيغة فقط عند الإدخال
+      validate: {
+        validator: function (v) {
+          if (v === undefined || v === null || v === '') return true;
+          return /^[0-9+\-\s()]{7,20}$/.test(v);
+        },
+        message: 'رقم هاتف اللاعب غير صحيح',
+      },
+    },
     notes: {
       type: String,
       maxlength: [500, 'الملاحظات لا يمكن أن تتجاوز 500 حرف'],
+    },
+    // الرياضة الخاصة باللاعب — تُعيَّن تلقائياً إذا كانت الأكاديمية ذات رياضة واحدة،
+    // وتكون إلزامية من الواجهة إذا كانت الأكاديمية متعددة الرياضات.
+    sport: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    // أيام حضور اللاعب الأسبوعية (Multi-select).
+    attendanceDays: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (arr) {
+          const valid = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+          return !Array.isArray(arr) || arr.every((d) => valid.includes(d));
+        },
+        message: 'أيام الحضور غير صحيحة',
+      },
     },
     isActive: {
       type: Boolean,
@@ -85,6 +116,7 @@ const playerSchema = new mongoose.Schema(
 // Indexes
 playerSchema.index({ academyId: 1 });
 playerSchema.index({ academyId: 1, isActive: 1 });
+playerSchema.index({ academyId: 1, sport: 1 });
 playerSchema.index(
   { fullName: 'text', playerCode: 'text', parentPhone: 'text' },
   { name: 'player_text_search' }

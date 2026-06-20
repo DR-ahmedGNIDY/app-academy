@@ -19,6 +19,7 @@ const playerRoutes = require('./routes/player.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const evaluationRoutes = require('./routes/evaluation.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const attendanceRoutes = require('./routes/attendance.routes');
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.use('/api/v1/players', playerRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
 app.use('/api/v1/evaluations', evaluationRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/attendance', attendanceRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
