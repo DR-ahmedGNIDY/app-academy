@@ -3,6 +3,7 @@ const Player = require('../models/player.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { logActivity } = require('../utils/activityLogger');
 
 // ─── Helper: verify player belongs to academy ────────────────────────────────
 const verifyPlayerAcademy = async (playerId, academyId, next) => {
@@ -50,6 +51,10 @@ const createEvaluation = async (req, res, next) => {
   });
 
   logger.info(`Evaluation created for player: ${player.playerCode} by evaluator: ${evaluatorId}`);
+  logActivity(req, {
+    actionType: 'ADD_EVALUATION', entityType: 'EVALUATION',
+    entityId: evaluation._id, entityName: player.fullName, academyId,
+  });
   return sendSuccess(res, { data: evaluation, message: 'تم إنشاء التقييم بنجاح', statusCode: 201 });
 };
 
@@ -153,6 +158,12 @@ const updateEvaluation = async (req, res, next) => {
   await evaluation.save();
 
   logger.info(`Evaluation updated: ${evaluation._id}`);
+  const evPlayer = await Player.findById(evaluation.playerId).select('fullName');
+  logActivity(req, {
+    actionType: 'UPDATE_EVALUATION', entityType: 'EVALUATION',
+    entityId: evaluation._id, entityName: evPlayer ? evPlayer.fullName : '',
+    academyId: evaluation.academyId,
+  });
   return sendSuccess(res, { data: evaluation, message: 'تم تحديث التقييم بنجاح' });
 };
 
@@ -170,6 +181,12 @@ const deleteEvaluation = async (req, res, next) => {
   await Evaluation.findByIdAndDelete(req.params.id);
 
   logger.info(`Evaluation deleted: ${req.params.id}`);
+  const delEvPlayer = await Player.findById(evaluation.playerId).select('fullName');
+  logActivity(req, {
+    actionType: 'DELETE_EVALUATION', entityType: 'EVALUATION',
+    entityId: evaluation._id, entityName: delEvPlayer ? delEvPlayer.fullName : '',
+    academyId: evaluation.academyId,
+  });
   return sendSuccess(res, { message: 'تم حذف التقييم بنجاح' });
 };
 

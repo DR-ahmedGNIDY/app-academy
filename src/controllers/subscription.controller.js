@@ -3,6 +3,7 @@ const Player = require('../models/player.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { logActivity } = require('../utils/activityLogger');
 
 // ─── Helper: resolve and verify academyId access ────────────────────────────
 /**
@@ -57,6 +58,11 @@ const createSubscription = async (req, res, next) => {
   });
 
   logger.info(`Subscription created: ${subscription._id} for player ${playerId}`);
+  logActivity(req, {
+    actionType: type === 'RENEWAL' ? 'RENEW_SUBSCRIPTION' : 'ADD_SUBSCRIPTION',
+    entityType: 'SUBSCRIPTION',
+    entityId: subscription._id, entityName: player.fullName, academyId,
+  });
 
   const responseData = warning
     ? { subscription, warning }
@@ -104,7 +110,13 @@ const deleteSubscription = async (req, res, next) => {
 
   await Subscription.deleteOne({ _id: subscription._id });
 
+  const subPlayer = await Player.findById(subscription.playerId).select('fullName');
   logger.info(`Subscription deleted: ${subscription._id}`);
+  logActivity(req, {
+    actionType: 'DELETE_SUBSCRIPTION', entityType: 'SUBSCRIPTION',
+    entityId: subscription._id, entityName: subPlayer ? subPlayer.fullName : '',
+    academyId: subscription.academyId,
+  });
   return sendSuccess(res, { message: 'تم حذف الاشتراك بنجاح' });
 };
 

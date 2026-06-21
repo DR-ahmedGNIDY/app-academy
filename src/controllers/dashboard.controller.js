@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Player = require('../models/player.model');
 const Subscription = require('../models/subscription.model');
 const Evaluation = require('../models/evaluation.model');
+const Activity = require('../models/activity.model');
 const { sendSuccess } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
 
@@ -239,98 +240,25 @@ const getEvaluationDistribution = async (req, res, next) => {
 };
 
 // GET /api/v1/dashboard/recent-activities
+// يُرجع سجل النشاط الحقيقي (من قام بالإجراء) — الأحدث أولاً.
 const getRecentActivities = async (req, res, next) => {
   const match = buildAcademyMatch(req);
 
-  const [recentPlayersRaw, recentSubscriptionsRaw, recentEvaluationsRaw] = await Promise.all([
-    Player.aggregate([
-      { $match: match },
-      { $sort: { created_at: -1 } },
-      { $limit: 5 },
-      {
-        $project: {
-          _id: 0,
-          type: { $literal: 'PLAYER' },
-          playerCode: 1,
-          fullName: 1,
-          created_at: 1,
-        },
-      },
-    ]),
+  const activities = await Activity.find(match)
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean();
 
-    Subscription.aggregate([
-      { $match: match },
-      { $sort: { created_at: -1 } },
-      { $limit: 5 },
-      {
-        $lookup: {
-          from: 'players',
-          localField: 'playerId',
-          foreignField: '_id',
-          as: 'player',
-        },
-      },
-      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          _id: 0,
-          type: { $literal: 'SUBSCRIPTION' },
-          subscriptionType: '$type',
-          amount: 1,
-          playerName: { $ifNull: ['$player.fullName', ''] },
-          playerCode: { $ifNull: ['$player.playerCode', ''] },
-          created_at: 1,
-        },
-      },
-    ]),
+  const data = activities.map((a) => ({
+    id: a._id.toString(),
+    userName: a.userName || '',
+    actionType: a.actionType,
+    entityType: a.entityType,
+    entityName: a.entityName || '',
+    createdAt: a.createdAt,
+  }));
 
-    Evaluation.aggregate([
-      { $match: match },
-      { $sort: { created_at: -1 } },
-      { $limit: 5 },
-      {
-        $lookup: {
-          from: 'players',
-          localField: 'playerId',
-          foreignField: '_id',
-          as: 'player',
-        },
-      },
-      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
-      {
-        $addFields: {
-          gradeLabel: {
-            $switch: {
-              branches: [
-                { case: { $gte: ['$average', 8] }, then: 'ممتاز' },
-                { case: { $gte: ['$average', 6] }, then: 'جيد' },
-              ],
-              default: 'يحتاج تحسين',
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          type: { $literal: 'EVALUATION' },
-          average: 1,
-          gradeLabel: 1,
-          playerName: { $ifNull: ['$player.fullName', ''] },
-          playerCode: { $ifNull: ['$player.playerCode', ''] },
-          created_at: 1,
-        },
-      },
-    ]),
-  ]);
-
-  sendSuccess(res, {
-    data: {
-      recentPlayers: recentPlayersRaw,
-      recentSubscriptions: recentSubscriptionsRaw,
-      recentEvaluations: recentEvaluationsRaw,
-    },
-  });
+  sendSuccess(res, { data });
 };
 
 // GET /api/v1/dashboard/sport-stats?sport=...&academyId=...

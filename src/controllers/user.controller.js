@@ -3,6 +3,7 @@ const Academy = require('../models/academy.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const { logActivity } = require('../utils/activityLogger');
 
 /**
  * POST /api/v1/users
@@ -44,6 +45,10 @@ const createUser = async (req, res, next) => {
   });
 
   logger.info(`User created: ${user.email} for academy ${academy.name} by ${req.user.email}`);
+  logActivity(req, {
+    actionType: 'ADD_USER', entityType: 'USER',
+    entityId: user._id, entityName: user.name, academyId,
+  });
 
   // Populate academyId before returning so the response includes academy details
   await user.populate('academyId', 'name');
@@ -82,6 +87,10 @@ const updateUser = async (req, res, next) => {
   await user.populate('academyId', 'name');
 
   logger.info(`User updated: ${user.email} by ${req.user.email}`);
+  logActivity(req, {
+    actionType: 'UPDATE_USER', entityType: 'USER',
+    entityId: user._id, entityName: user.name, academyId: user.academyId,
+  });
 
   return sendSuccess(res, {
     data: user,
@@ -134,6 +143,10 @@ const deleteUser = async (req, res, next) => {
   await user.save();
 
   logger.info(`User soft-deleted: ${user.email} by ${req.user.email}`);
+  logActivity(req, {
+    actionType: 'DELETE_USER', entityType: 'USER',
+    entityId: user._id, entityName: user.name, academyId: user.academyId,
+  });
 
   return sendSuccess(res, { message: 'تم حذف المستخدم بنجاح' });
 };

@@ -4,6 +4,7 @@ const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
+const { logActivity } = require('../utils/activityLogger');
 
 // Normalize an array field coming from multipart/form-data.
 // Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
@@ -214,6 +215,10 @@ const createPlayer = async (req, res, next) => {
   const player = await Player.create(playerData);
 
   logger.info(`Player created: ${player.playerCode} - ${player.fullName}`);
+  logActivity(req, {
+    actionType: 'CREATE_PLAYER', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
   return sendSuccess(res, { data: player, message: 'تم إضافة اللاعب بنجاح', statusCode: 201 });
 };
 
@@ -264,6 +269,10 @@ const updatePlayer = async (req, res, next) => {
   await player.save();
 
   logger.info(`Player updated: ${player.playerCode} - ${player.fullName}`);
+  logActivity(req, {
+    actionType: 'UPDATE_PLAYER', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
   return sendSuccess(res, { data: player, message: 'تم تحديث بيانات اللاعب بنجاح' });
 };
 
@@ -281,6 +290,10 @@ const deletePlayer = async (req, res, next) => {
   await player.save();
 
   logger.info(`Player deleted (soft): ${player.playerCode} - ${player.fullName}`);
+  logActivity(req, {
+    actionType: 'DELETE_PLAYER', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
   return sendSuccess(res, { message: 'تم حذف اللاعب بنجاح' });
 };
 

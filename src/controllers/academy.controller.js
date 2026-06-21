@@ -3,6 +3,7 @@ const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
+const { logActivity } = require('../utils/activityLogger');
 
 // Normalize the `sports` field coming from multipart/form-data.
 // Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
@@ -95,6 +96,10 @@ const updateAcademy = async (req, res, next) => {
 
   await academy.save();
   logger.info(`Academy updated: ${academy.name} by ${req.user.email}`);
+  logActivity(req, {
+    actionType: 'UPDATE_ACADEMY', entityType: 'ACADEMY',
+    entityId: academy._id, entityName: academy.name, academyId: academy._id,
+  });
   return sendSuccess(res, { data: academy, message: 'تم تحديث الأكاديمية بنجاح' });
 };
 
