@@ -23,6 +23,12 @@ const attendanceRoutes = require('./routes/attendance.routes');
 
 const app = express();
 
+// التطبيق يعمل خلف Nginx reverse proxy واحد. نثق بأول وكيل (hop) فقط حتى يقرأ
+// Express و express-rate-limit عنوان العميل الحقيقي من رأس X-Forwarded-For،
+// ويُحدّد المعدّل لكل IP حقيقي بدل IP الـ Proxy. القيمة 1 (وليست true) أكثر
+// أماناً لأنها تثق بوكيل واحد معروف فقط وتمنع تحذير ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+app.set('trust proxy', 1);
+
 connectDB();
 
 app.use(helmet());
