@@ -24,11 +24,11 @@ const createEvaluation = async (req, res, next) => {
   const evaluatorId = req.user._id;
 
   let academyId;
-  if (req.user.role === 'academy_admin') {
-    academyId = req.user.academyId;
-  } else {
+  if (req.user.role === 'super_admin') {
     academyId = req.body.academyId;
     if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+  } else {
+    academyId = req.user.academyId;
   }
 
   const { playerId, evaluationDate, fitness, basicSkills, attack, defense, commitment, notes } = req.body;
@@ -69,7 +69,7 @@ const getEvaluationsByPlayer = async (req, res, next) => {
   const player = await Player.findById(playerId);
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403));
   }
@@ -102,7 +102,7 @@ const getLatestEvaluation = async (req, res, next) => {
   const player = await Player.findById(playerId);
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403));
   }
@@ -128,7 +128,7 @@ const getEvaluationById = async (req, res, next) => {
   if (!evaluation) return next(new AppError('التقييم غير موجود', 404));
 
   // Access check for academy_admin
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       evaluation.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية للوصول إلى هذا التقييم', 403));
   }
@@ -142,7 +142,7 @@ const updateEvaluation = async (req, res, next) => {
   if (!evaluation) return next(new AppError('التقييم غير موجود', 404));
 
   // Access check
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       evaluation.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية لتعديل هذا التقييم', 403));
   }
@@ -173,7 +173,7 @@ const deleteEvaluation = async (req, res, next) => {
   if (!evaluation) return next(new AppError('التقييم غير موجود', 404));
 
   // Access check
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       evaluation.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية لحذف هذا التقييم', 403));
   }
@@ -192,9 +192,9 @@ const deleteEvaluation = async (req, res, next) => {
 
 // ─── GET /academy/:academyId ──────────────────────────────────────────────────
 const getEvaluationsByAcademy = async (req, res, next) => {
-  const academyId = req.user.role === 'academy_admin'
-    ? req.user.academyId
-    : req.params.academyId;
+  const academyId = req.user.role === 'super_admin'
+    ? req.params.academyId
+    : req.user.academyId;
 
   if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
 

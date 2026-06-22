@@ -27,7 +27,8 @@ const parseSports = (raw) => {
 const getAcademies = async (req, res, next) => {
   let query = { isActive: true };
 
-  if (req.user.role === 'academy_admin') {
+  // أي مستخدم غير super_admin يرى أكاديميته فقط.
+  if (req.user.role !== 'super_admin') {
     query._id = req.user.academyId;
   }
 
@@ -43,7 +44,7 @@ const getAcademyById = async (req, res, next) => {
 
   if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       academy._id.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية للوصول إلى هذه الأكاديمية', 403));
   }
@@ -73,7 +74,7 @@ const updateAcademy = async (req, res, next) => {
   const academy = await Academy.findById(req.params.id).select('+logo_public_id');
   if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       academy._id.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية لتعديل هذه الأكاديمية', 403));
   }

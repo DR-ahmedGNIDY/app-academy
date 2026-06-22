@@ -41,14 +41,15 @@ const getPlayers = async (req, res, next) => {
     filter.isActive = true;
   }
 
-  // Academy scope — always required; super_admin must pass academyId explicitly
-  if (req.user.role === 'academy_admin') {
-    filter.academyId = req.user.academyId;
-  } else if (req.user.role === 'super_admin') {
+  // Academy scope — كل مستخدم غير super_admin مُقيَّد حتمياً بأكاديميته.
+  // super_admin فقط يمرّر academyId صراحةً. (يشمل دور admin + academy_admin.)
+  if (req.user.role === 'super_admin') {
     if (!req.query.academyId) {
       return next(new AppError('معرّف الأكاديمية مطلوب', 400));
     }
     filter.academyId = req.query.academyId;
+  } else {
+    filter.academyId = req.user.academyId;
   }
 
   // Birth year filter
@@ -120,13 +121,13 @@ const searchPlayers = async (req, res, next) => {
     ],
   };
 
-  if (req.user.role === 'academy_admin') {
-    filter.academyId = req.user.academyId;
-  } else if (req.user.role === 'super_admin') {
+  if (req.user.role === 'super_admin') {
     if (!req.query.academyId) {
       return next(new AppError('معرّف الأكاديمية مطلوب للبحث', 400));
     }
     filter.academyId = req.query.academyId;
+  } else {
+    filter.academyId = req.user.academyId;
   }
 
   const players = await Player.find(filter).sort({ created_at: -1 }).limit(50);
@@ -139,7 +140,7 @@ const getPlayerById = async (req, res, next) => {
   const player = await Player.findById(req.params.id);
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية للوصول إلى هذا اللاعب', 403));
   }
@@ -149,13 +150,13 @@ const getPlayerById = async (req, res, next) => {
 
 // ─── POST /players ───────────────────────────────────────────────────────────
 const createPlayer = async (req, res, next) => {
-  // Determine academyId
+  // Determine academyId — super_admin يحدّدها، غيره مُقيَّد بأكاديميته.
   let academyId;
-  if (req.user.role === 'academy_admin') {
-    academyId = req.user.academyId;
-  } else {
+  if (req.user.role === 'super_admin') {
     academyId = req.body.academyId;
     if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+  } else {
+    academyId = req.user.academyId;
   }
 
   const {
@@ -227,7 +228,7 @@ const updatePlayer = async (req, res, next) => {
   const player = await Player.findById(req.params.id).select('+image_public_id');
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية لتعديل هذا اللاعب', 403));
   }
@@ -281,7 +282,7 @@ const deletePlayer = async (req, res, next) => {
   const player = await Player.findById(req.params.id);
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية لحذف هذا اللاعب', 403));
   }
@@ -302,7 +303,7 @@ const deletePlayerImage = async (req, res, next) => {
   const player = await Player.findById(req.params.id).select('+image_public_id');
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  if (req.user.role === 'academy_admin' &&
+  if (req.user.role !== 'super_admin' &&
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية لحذف صورة هذا اللاعب', 403));
   }

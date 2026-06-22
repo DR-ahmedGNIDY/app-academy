@@ -64,7 +64,7 @@ const recordAttendance = async (req, res, next) => {
 
   // 2) فحص صلاحية النطاق
   if (
-    req.user.role === 'academy_admin' &&
+    req.user.role !== 'super_admin' &&
     player.academyId.toString() !== req.user.academyId?.toString()
   ) {
     return next(new AppError('ليس لديك صلاحية لتسجيل حضور هذا اللاعب', 403));
@@ -124,14 +124,14 @@ const getAttendance = async (req, res, next) => {
 
   const filter = {};
 
-  // نطاق الأكاديمية إلزامي
-  if (req.user.role === 'academy_admin') {
-    filter.academyId = req.user.academyId;
-  } else if (req.user.role === 'super_admin') {
+  // نطاق الأكاديمية إلزامي — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
+  if (req.user.role === 'super_admin') {
     if (!req.query.academyId) {
       return next(new AppError('معرّف الأكاديمية مطلوب', 400));
     }
     filter.academyId = req.query.academyId;
+  } else {
+    filter.academyId = req.user.academyId;
   }
 
   // فلتر يوم محدّد، أو نطاق تاريخي (مقارنة نصية صالحة لصيغة YYYY-MM-DD)
@@ -189,15 +189,15 @@ const weekdayCountsInRange = (startStr, endStr) => {
 // ─── GET /attendance/report ───────────────────────────────────────────────────
 // تقرير الحضور/الغياب — استعلامان فقط (لاعبون + تجميع الحضور) ثم حساب في الذاكرة.
 const getAttendanceReport = async (req, res, next) => {
-  // نطاق الأكاديمية
+  // نطاق الأكاديمية — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
   let academyId;
-  if (req.user.role === 'academy_admin') {
-    academyId = req.user.academyId;
-  } else if (req.user.role === 'super_admin') {
+  if (req.user.role === 'super_admin') {
     if (!req.query.academyId) {
       return next(new AppError('معرّف الأكاديمية مطلوب', 400));
     }
     academyId = req.query.academyId;
+  } else {
+    academyId = req.user.academyId;
   }
 
   // الفترة — افتراضياً الشهر الحالي إن لم تُرسل
