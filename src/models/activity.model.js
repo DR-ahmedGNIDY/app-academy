@@ -28,12 +28,19 @@ const activitySchema = new mongoose.Schema(
         'RECORD_ATTENDANCE',
         'ADD_USER', 'UPDATE_USER', 'DELETE_USER',
         'UPDATE_ACADEMY',
+        'ADD_STAFF', 'UPDATE_STAFF', 'DELETE_STAFF',
+        'MARK_STAFF_ATTENDANCE',
+        'GENERATE_PAYROLL', 'MARK_PAYROLL_PAID',
+        'ADD_EXPENSE', 'UPDATE_EXPENSE', 'DELETE_EXPENSE',
       ],
     },
     entityType: {
       type: String,
       required: true,
-      enum: ['PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY'],
+      enum: [
+        'PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY',
+        'STAFF', 'STAFF_ATTENDANCE', 'PAYROLL', 'EXPENSE',
+      ],
     },
     entityId: {
       type: String,

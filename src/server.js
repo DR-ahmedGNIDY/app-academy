@@ -20,6 +20,10 @@ const subscriptionRoutes = require('./routes/subscription.routes');
 const evaluationRoutes = require('./routes/evaluation.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
+const staffRoutes = require('./routes/staff.routes');
+const staffAttendanceRoutes = require('./routes/staffAttendance.routes');
+const payrollRoutes = require('./routes/payroll.routes');
+const expenseRoutes = require('./routes/expense.routes');
 
 const app = express();
 
@@ -85,6 +89,10 @@ app.use('/api/v1/subscriptions', subscriptionRoutes);
 app.use('/api/v1/evaluations', evaluationRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
+app.use('/api/v1/staff', staffRoutes);
+app.use('/api/v1/staff-attendance', staffAttendanceRoutes);
+app.use('/api/v1/payroll', payrollRoutes);
+app.use('/api/v1/expenses', expenseRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

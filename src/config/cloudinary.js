@@ -32,6 +32,18 @@ const academyLogoStorage = new CloudinaryStorage({
   },
 });
 
+const staffPhotoStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'basketball_academy/staff',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  },
+});
+
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
@@ -52,8 +64,14 @@ const uploadAcademyLogo = multer({
   fileFilter,
 });
 
+const uploadStaffPhoto = multer({
+  storage: staffPhotoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
+
 const deleteImage = async (publicId) => {
   return cloudinary.uploader.destroy(publicId);
 };
 
-module.exports = { cloudinary, uploadPlayerImage, uploadAcademyLogo, deleteImage };
+module.exports = { cloudinary, uploadPlayerImage, uploadAcademyLogo, uploadStaffPhoto, deleteImage };
