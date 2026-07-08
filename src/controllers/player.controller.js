@@ -1,10 +1,13 @@
 const Player = require('../models/player.model');
 const Academy = require('../models/academy.model');
+const PlayerAccount = require('../models/playerAccount.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { generateStrongPassword } = require('../utils/generatePassword');
+const escapeRegex = require('../utils/escapeRegex');
 
 // Normalize an array field coming from multipart/form-data.
 // Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
@@ -81,7 +84,7 @@ const getPlayers = async (req, res, next) => {
       filter.$text = { $search: searchTerm };
     } catch (e) {
       // Fallback to regex search
-      const regex = new RegExp(searchTerm, 'i');
+      const regex = new RegExp(escapeRegex(searchTerm), 'i');
       filter.$or = [
         { fullName: regex },
         { playerCode: regex },
@@ -111,7 +114,7 @@ const searchPlayers = async (req, res, next) => {
     return next(new AppError('يجب أن يكون نص البحث حرفين على الأقل', 400));
   }
 
-  const regex = new RegExp(q, 'i');
+  const regex = new RegExp(escapeRegex(q), 'i');
   const filter = {
     isActive: true,
     $or: [
@@ -215,12 +218,37 @@ const createPlayer = async (req, res, next) => {
 
   const player = await Player.create(playerData);
 
+  // إنشاء حساب دخول للاعب تلقائياً (اسم مستخدم عالمي nosait00001 + كلمة مرور قوية).
+  // best-effort: إن فشل لا نُفشل إنشاء اللاعب، لكن نُبلّغ الواجهة بغياب الحساب.
+  let account = null;
+  try {
+    const username = await PlayerAccount.generateUsername();
+    const plainPassword = generateStrongPassword(10);
+    const created = await PlayerAccount.create({
+      playerId: player._id,
+      academyId: player.academyId,
+      username,
+      password: plainPassword,
+    });
+    // نُرجع كلمة المرور النصية مرة واحدة فقط لعرضها في نافذة البيانات.
+    account = { _id: created._id.toString(), username, password: plainPassword };
+  } catch (accErr) {
+    logger.warn(`[PLAYER-ACCOUNT] failed to create account for ${player.playerCode}: ${accErr.message}`);
+  }
+
   logger.info(`Player created: ${player.playerCode} - ${player.fullName}`);
   logActivity(req, {
     actionType: 'CREATE_PLAYER', entityType: 'PLAYER',
     entityId: player._id, entityName: player.fullName, academyId: player.academyId,
   });
-  return sendSuccess(res, { data: player, message: 'تم إضافة اللاعب بنجاح', statusCode: 201 });
+  // نُبقي data = وثيقة اللاعب كما كانت (توافق كامل مع الواجهة الحالية)،
+  // ونضيف account كحقل جانبي جديد فقط (إضافة غير كاسرة).
+  return res.status(201).json({
+    success: true,
+    message: 'تم إضافة اللاعب بنجاح',
+    data: player,
+    account,
+  });
 };
 
 // ─── PUT /players/:id ────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notify } = require('../utils/notificationService');
 
 // ─── Helper: verify player belongs to academy ────────────────────────────────
 const verifyPlayerAcademy = async (playerId, academyId, next) => {
@@ -54,6 +55,13 @@ const createEvaluation = async (req, res, next) => {
   logActivity(req, {
     actionType: 'ADD_EVALUATION', entityType: 'EVALUATION',
     entityId: evaluation._id, entityName: player.fullName, academyId,
+  });
+  // إشعار اللاعب بإضافة تقييم جديد (fire-and-forget).
+  notify({
+    recipientType: 'player', recipientId: player._id, academyId,
+    type: 'EVALUATION_ADDED', title: 'تم إضافة تقييم جديد',
+    body: `متوسط التقييم: ${evaluation.average}`,
+    meta: { evaluationId: evaluation._id.toString(), average: evaluation.average },
   });
   return sendSuccess(res, { data: evaluation, message: 'تم إنشاء التقييم بنجاح', statusCode: 201 });
 };

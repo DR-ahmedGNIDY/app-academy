@@ -4,6 +4,7 @@ const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notify } = require('../utils/notificationService');
 
 // ─── Helper: resolve and verify academyId access ────────────────────────────
 /**
@@ -62,6 +63,14 @@ const createSubscription = async (req, res, next) => {
     actionType: type === 'RENEWAL' ? 'RENEW_SUBSCRIPTION' : 'ADD_SUBSCRIPTION',
     entityType: 'SUBSCRIPTION',
     entityId: subscription._id, entityName: player.fullName, academyId,
+  });
+  // إشعار اللاعب بتجديد/إضافة اشتراكه (fire-and-forget).
+  notify({
+    recipientType: 'player', recipientId: player._id, academyId,
+    type: 'SUBSCRIPTION_RENEWED',
+    title: type === 'RENEWAL' ? 'تم تجديد اشتراكك' : 'تم تسجيل اشتراكك',
+    body: `ساري حتى ${new Date(endDate).toLocaleDateString('ar-EG')}`,
+    meta: { subscriptionId: subscription._id.toString(), endDate },
   });
 
   const responseData = warning
@@ -215,7 +224,7 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
 
   const [subscriptions, total] = await Promise.all([
     Subscription.find(filter)
-      .populate('playerId', 'fullName playerCode')
+      .populate('playerId', 'fullName playerCode parentPhone image_url')
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limit),

@@ -24,7 +24,9 @@ const academyLogoStorage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: 'basketball_academy/logos',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'svg'],
+    // SVG مُستبعَد عمداً: يمكن أن يحمل JavaScript ويؤدي إلى XSS مخزَّن عند
+    // عرضه في واجهة الويب. نقتصر على صور نقطية آمنة فقط.
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     transformation: [
       { width: 300, height: 300, crop: 'fit' },
       { quality: 'auto', fetch_format: 'auto' },
@@ -44,11 +46,16 @@ const staffPhotoStorage = new CloudinaryStorage({
   },
 });
 
+// قائمة بيضاء صارمة لأنواع الصور النقطية المسموح بها. نرفض صراحةً
+// image/svg+xml و text/html والملفات التنفيذية حتى لو زُوِّر امتداد الملف —
+// وCloudinary يعيد ترميز الصورة بعد الرفع كطبقة دفاع ثانية.
+const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+  if (ALLOWED_IMAGE_MIME.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('يُسمح فقط برفع ملفات الصور'), false);
+    cb(new Error('يُسمح فقط برفع صور بصيغة JPG أو PNG أو WEBP'), false);
   }
 };
 

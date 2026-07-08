@@ -13,6 +13,7 @@ const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
 
 const authRoutes = require('./routes/auth.routes');
+const academyRegistrationRoutes = require('./routes/academyRegistration.routes');
 const academyRoutes = require('./routes/academy.routes');
 const userRoutes = require('./routes/user.routes');
 const playerRoutes = require('./routes/player.routes');
@@ -24,6 +25,12 @@ const staffRoutes = require('./routes/staff.routes');
 const staffAttendanceRoutes = require('./routes/staffAttendance.routes');
 const payrollRoutes = require('./routes/payroll.routes');
 const expenseRoutes = require('./routes/expense.routes');
+// منصة Nosait SaaS
+const platformSubscriptionRoutes = require('./routes/platformSubscription.routes');
+const playerAuthRoutes = require('./routes/playerAuth.routes');
+const playerPortalRoutes = require('./routes/playerPortal.routes');
+const chatRoutes = require('./routes/chat.routes');
+const notificationRoutes = require('./routes/notification.routes');
 
 const app = express();
 
@@ -37,9 +44,13 @@ connectDB();
 
 app.use(helmet());
 
+// عند ضبط FRONTEND_URL نُقيّد الأصل ونسمح بالـ credentials؛ وإلا (تطبيق موبايل
+// بلا أصل محدّد) نسمح بأي أصل لكن دون credentials — لأن المتصفحات ترفض الجمع بين
+// origin:'*' و credentials:true، وهذا يمنع تسريب الجلسات عبر أصول غير موثوقة.
+const allowedOrigin = process.env.FRONTEND_URL;
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  credentials: true,
+  origin: allowedOrigin || '*',
+  credentials: Boolean(allowedOrigin),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -82,6 +93,8 @@ app.get('/health', (req, res) => {
 
 app.use('/api/v1/auth/login', loginLimiter);
 app.use('/api/v1/auth', authRoutes);
+// تسجيل ذاتي لأكاديمية جديدة (عام) — منصة Nosait SaaS.
+app.use('/api/v1/register-academy', academyRegistrationRoutes);
 app.use('/api/v1/academies', academyRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/players', playerRoutes);
@@ -93,6 +106,11 @@ app.use('/api/v1/staff', staffRoutes);
 app.use('/api/v1/staff-attendance', staffAttendanceRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
+app.use('/api/v1/platform/subscriptions', platformSubscriptionRoutes);
+app.use('/api/v1/auth/player', playerAuthRoutes);
+app.use('/api/v1/player', playerPortalRoutes);
+app.use('/api/v1/chat', chatRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

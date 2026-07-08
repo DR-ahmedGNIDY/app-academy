@@ -12,11 +12,15 @@ const {
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 const { uploadPlayerImage } = require('../config/cloudinary');
+const { blockIfNotWritable, enforcePlayerLimit } = require('../middleware/subscriptionGuard');
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(protect);
+
+// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
+router.use(blockIfNotWritable);
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
@@ -84,6 +88,7 @@ router.get('/:id', getPlayerById);
 // POST /players
 router.post(
   '/',
+  enforcePlayerLimit, // يمنع تجاوز الحد الأقصى للاعبين (7 أثناء التجربة)
   uploadPlayerImage.single('image'),
   createValidators,
   validate,

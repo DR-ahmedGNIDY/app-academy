@@ -38,6 +38,8 @@ const errorHandler = (err, req, res, next) => {
 
   if (statusCode >= 500) {
     logger.error(`${statusCode} - ${message} - ${req.originalUrl}`, { stack: err.stack });
+    // لا نُسرّب تفاصيل الأخطاء الداخلية للعميل — رسالة عامة فقط.
+    message = 'حدث خطأ غير متوقع في الخادم';
   }
 
   return sendError(res, { message, statusCode });

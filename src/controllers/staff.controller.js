@@ -4,6 +4,7 @@ const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const escapeRegex = require('../utils/escapeRegex');
 
 const parseArrayField = (raw) => {
   if (raw === undefined || raw === null) return undefined;
@@ -35,7 +36,7 @@ const getStaff = async (req, res, next) => {
   }
 
   if (req.query.search && req.query.search.trim().length > 0) {
-    const regex = new RegExp(req.query.search.trim(), 'i');
+    const regex = new RegExp(escapeRegex(req.query.search.trim()), 'i');
     filter.$or = [{ fullName: regex }, { phone: regex }, { position: regex }];
   }
 

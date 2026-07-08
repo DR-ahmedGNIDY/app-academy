@@ -5,6 +5,7 @@ const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notify } = require('../utils/notificationService');
 
 // أسماء أيام الأسبوع العربية مرتبطة بـ Date.getDay() (0 = الأحد ... 6 = السبت)
 // مطابقة تماماً للقيم المخزّنة في player.attendanceDays و SportsConstants.weekDays.
@@ -88,6 +89,13 @@ const recordAttendance = async (req, res, next) => {
     logActivity(req, {
       actionType: 'RECORD_ATTENDANCE', entityType: 'ATTENDANCE',
       entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+    });
+    // إشعار اللاعب بتسجيل حضوره (fire-and-forget).
+    notify({
+      recipientType: 'player', recipientId: player._id, academyId: player.academyId,
+      type: 'ATTENDANCE_PRESENT', title: 'تم تسجيل حضورك',
+      body: `تم تسجيل حضورك بتاريخ ${date} الساعة ${time}`,
+      meta: { date, time },
     });
     return sendSuccess(res, {
       data: {

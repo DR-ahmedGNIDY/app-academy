@@ -32,6 +32,8 @@ const activitySchema = new mongoose.Schema(
         'MARK_STAFF_ATTENDANCE',
         'GENERATE_PAYROLL', 'MARK_PAYROLL_PAID',
         'ADD_EXPENSE', 'UPDATE_EXPENSE', 'DELETE_EXPENSE',
+        // منصة SaaS (Nosait)
+        'REGISTER_ACADEMY', 'ACTIVATE_SUBSCRIPTION', 'UPDATE_SUBSCRIPTION',
       ],
     },
     entityType: {
@@ -40,6 +42,7 @@ const activitySchema = new mongoose.Schema(
       enum: [
         'PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY',
         'STAFF', 'STAFF_ATTENDANCE', 'PAYROLL', 'EXPENSE',
+        'PLATFORM_SUBSCRIPTION',
       ],
     },
     entityId: {

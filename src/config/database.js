@@ -4,7 +4,9 @@ const logger = require('../utils/logger');
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      dbName: 'basketball_academy',
+      // يسمح بقاعدة بيانات معزولة للاختبار عبر MONGO_DB_NAME دون المساس
+      // بقاعدة الإنتاج 'basketball_academy'. الإنتاج يبقى على القيمة الافتراضية.
+      dbName: process.env.MONGO_DB_NAME || 'basketball_academy',
     });
     logger.info(`✅ MongoDB متصل: ${conn.connection.host}`);
 

@@ -12,7 +12,20 @@ const generateRefreshToken = (userId) => {
   });
 };
 
+// توكن دخول اللاعب — نفس السر لكن يحمل type:'player' لتمييزه عن توكن المدير.
+const generatePlayerToken = (playerAccountId) => {
+  return jwt.sign({ id: playerAccountId, type: 'player' }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  });
+};
+
 const verifyToken = (token) => jwt.verify(token, process.env.JWT_SECRET);
 const verifyRefreshToken = (token) => jwt.verify(token, process.env.JWT_REFRESH_SECRET);
 
-module.exports = { generateToken, generateRefreshToken, verifyToken, verifyRefreshToken };
+module.exports = {
+  generateToken,
+  generateRefreshToken,
+  generatePlayerToken,
+  verifyToken,
+  verifyRefreshToken,
+};

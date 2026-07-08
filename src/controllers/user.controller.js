@@ -10,10 +10,6 @@ const { logActivity } = require('../utils/activityLogger');
  * super_admin only — creates academy_admin or admin users
  */
 const createUser = async (req, res, next) => {
-  // ── TRACE: طباعة كل ما وصل في req.body ──────────────────────────────────
-  console.log('[createUser] req.body =', JSON.stringify(req.body));
-  console.log('[createUser] req.body.role =', req.body.role);
-  // ─────────────────────────────────────────────────────────────────────────
   const { name, email, password, academyId, role: requestedRole } = req.body;
 
   // Verify the target academy exists and is active

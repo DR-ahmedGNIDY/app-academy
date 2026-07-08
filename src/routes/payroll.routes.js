@@ -7,12 +7,15 @@ const {
   markPaid,
 } = require('../controllers/payroll.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
 
 router.use(protect);
 router.use(restrictTo('academy_admin'));
+// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
+router.use(blockIfNotWritable);
 
 const generateValidators = [
   body('month').notEmpty().withMessage('الشهر مطلوب').matches(/^\d{4}-\d{2}$/).withMessage('صيغة الشهر غير صحيحة'),

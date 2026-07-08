@@ -9,6 +9,7 @@ const {
   getExpenseReport,
 } = require('../controllers/expense.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 const Expense = require('../models/expense.model');
 
@@ -16,6 +17,8 @@ const router = express.Router();
 
 router.use(protect);
 router.use(restrictTo('academy_admin'));
+// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
+router.use(blockIfNotWritable);
 
 const createValidators = [
   body('name').notEmpty().withMessage('اسم المصروف مطلوب').isLength({ max: 150 }).withMessage('اسم المصروف طويل جداً'),

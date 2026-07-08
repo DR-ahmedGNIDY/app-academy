@@ -8,6 +8,7 @@ const {
   deleteStaff,
 } = require('../controllers/staff.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 const { uploadStaffPhoto } = require('../config/cloudinary');
 const Staff = require('../models/staff.model');
@@ -16,6 +17,8 @@ const router = express.Router();
 
 router.use(protect);
 router.use(restrictTo('academy_admin'));
+// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
+router.use(blockIfNotWritable);
 
 const createValidators = [
   body('fullName')
