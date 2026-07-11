@@ -7,7 +7,11 @@ const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { generateStrongPassword } = require('../utils/generatePassword');
+const AcademySubscription = require('../models/academySubscription.model');
 const escapeRegex = require('../utils/escapeRegex');
+
+// إشارة داخلية: تخطّي إنشاء حساب اللاعب لأن بوابة اللاعب غير مفعّلة.
+class PortalDisabledSkip extends Error {}
 
 // Normalize an array field coming from multipart/form-data.
 // Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
@@ -74,6 +78,15 @@ const getPlayers = async (req, res, next) => {
   // Attendance-day filter — matches players whose attendanceDays array contains the day
   if (req.query.attendanceDay && req.query.attendanceDay.trim().length > 0) {
     filter.attendanceDays = req.query.attendanceDay.trim();
+  }
+
+  // Account filter (Player Portal) — 'true' = لديهم حساب، 'false' = بدون حساب.
+  // إضافي بالكامل: غياب البارامتر = السلوك القديم تماماً.
+  if (req.query.hasAccount === 'true' || req.query.hasAccount === 'false') {
+    const accountPlayerIds = await PlayerAccount.find({ academyId: filter.academyId }).distinct('playerId');
+    filter._id = req.query.hasAccount === 'true'
+      ? { $in: accountPlayerIds }
+      : { $nin: accountPlayerIds };
   }
 
   // Search
@@ -218,10 +231,15 @@ const createPlayer = async (req, res, next) => {
 
   const player = await Player.create(playerData);
 
-  // إنشاء حساب دخول للاعب تلقائياً (اسم مستخدم عالمي nosait00001 + كلمة مرور قوية).
+  // إنشاء حساب دخول للاعب تلقائياً (اسم مستخدم عالمي nosait00001 + كلمة مرور قوية)
+  // فقط إذا كانت ميزة بوابة اللاعب مفعّلة لهذه الأكاديمية (playerPortalEnabled).
   // best-effort: إن فشل لا نُفشل إنشاء اللاعب، لكن نُبلّغ الواجهة بغياب الحساب.
   let account = null;
   try {
+    const platformSub = await AcademySubscription.findOne({ academyId: player.academyId });
+    if (!platformSub || platformSub.playerPortalEnabled !== true) {
+      throw new PortalDisabledSkip();
+    }
     const username = await PlayerAccount.generateUsername();
     const plainPassword = generateStrongPassword(10);
     const created = await PlayerAccount.create({
@@ -233,7 +251,11 @@ const createPlayer = async (req, res, next) => {
     // نُرجع كلمة المرور النصية مرة واحدة فقط لعرضها في نافذة البيانات.
     account = { _id: created._id.toString(), username, password: plainPassword };
   } catch (accErr) {
-    logger.warn(`[PLAYER-ACCOUNT] failed to create account for ${player.playerCode}: ${accErr.message}`);
+    if (accErr instanceof PortalDisabledSkip) {
+      logger.info(`[PLAYER-ACCOUNT] portal disabled for academy ${player.academyId} — skipping auto account for ${player.playerCode}`);
+    } else {
+      logger.warn(`[PLAYER-ACCOUNT] failed to create account for ${player.playerCode}: ${accErr.message}`);
+    }
   }
 
   logger.info(`Player created: ${player.playerCode} - ${player.fullName}`);

@@ -11,7 +11,11 @@ const historyEntrySchema = new mongoose.Schema(
   {
     action: {
       type: String,
-      enum: ['CREATED_TRIAL', 'ACTIVATED', 'UPDATED', 'SUSPENDED', 'REACTIVATED', 'MIGRATED'],
+      enum: [
+        'CREATED_TRIAL', 'ACTIVATED', 'UPDATED', 'SUSPENDED', 'REACTIVATED', 'MIGRATED',
+        // Player Portal feature toggle (إضافي — لا يغيّر القيم القديمة)
+        'PORTAL_ENABLED', 'PORTAL_DISABLED',
+      ],
       required: true,
     },
     plan: { type: String, enum: ['trial', 'month', 'year', 'legacy'] },
@@ -65,6 +69,13 @@ const academySubscriptionSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    // ميزة بوابة اللاعب (Player Portal): حسابات دخول اللاعبين متاحة فقط
+    // عند تفعيلها. false افتراضياً — الأكاديميات الجديدة تُفعَّل لها أثناء
+    // التسجيل (trial)، والقديمة تبقى معطّلة حتى يفعّلها Super Admin.
+    playerPortalEnabled: {
+      type: Boolean,
+      default: false,
+    },
     history: {
       type: [historyEntrySchema],
       default: [],
@@ -100,6 +111,12 @@ academySubscriptionSchema.methods.effectiveStatus = function () {
 academySubscriptionSchema.methods.isWritable = function () {
   const s = this.effectiveStatus();
   return s === 'trial' || s === 'active';
+};
+
+// هل بوابة اللاعب فعّالة الآن؟ تتطلب: الميزة مفعّلة + اشتراك حي (trial/active).
+// انتهاء الاشتراك (حتى التجريبي) يوقف البوابة تلقائياً.
+academySubscriptionSchema.methods.isPlayerPortalActive = function () {
+  return this.playerPortalEnabled === true && this.isWritable();
 };
 
 // الأيام المتبقية حتى نهاية الاشتراك (0 إذا انتهى).

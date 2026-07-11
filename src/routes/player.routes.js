@@ -9,6 +9,14 @@ const {
   deletePlayer,
   deletePlayerImage,
 } = require('../controllers/player.controller');
+const {
+  getPlayerAccount,
+  createPlayerAccount,
+  changePlayerPassword,
+  resetPlayerPassword,
+  togglePlayerAccount,
+  getAccountStats,
+} = require('../controllers/playerAccountAdmin.controller');
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 const { uploadPlayerImage } = require('../config/cloudinary');
@@ -82,8 +90,45 @@ router.get('/', getPlayers);
 // GET  /players/search?q=...   ← MUST be before /:id to avoid conflict
 router.get('/search', searchPlayers);
 
+// GET  /players/account-stats   ← MUST be before /:id to avoid conflict
+router.get('/account-stats', getAccountStats);
+
 // GET  /players/:id
 router.get('/:id', getPlayerById);
+
+// ─── Player account management (Player Portal) — إضافي بالكامل ──────────────
+
+// GET  /players/:id/account — حالة حساب اللاعب (بدون كلمة مرور)
+router.get('/:id/account', getPlayerAccount);
+
+// POST /players/:id/create-account — إنشاء حساب للاعب قائم
+router.post('/:id/create-account', createPlayerAccount);
+
+// PATCH /players/:id/password — تغيير كلمة المرور يدوياً
+router.patch(
+  '/:id/password',
+  [
+    body('password')
+      .isLength({ min: 6, max: 64 }).withMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
+    body('confirmPassword')
+      .optional()
+      .custom((value, { req }) => value === req.body.password)
+      .withMessage('كلمتا المرور غير متطابقتين'),
+  ],
+  validate,
+  changePlayerPassword
+);
+
+// PATCH /players/:id/reset-password — توليد كلمة مرور عشوائية جديدة
+router.patch('/:id/reset-password', resetPlayerPassword);
+
+// PATCH /players/:id/toggle-account — تفعيل/تعطيل الحساب
+router.patch(
+  '/:id/toggle-account',
+  [body('isActive').isBoolean().withMessage('قيمة التفعيل غير صحيحة')],
+  validate,
+  togglePlayerAccount
+);
 
 // POST /players
 router.post(

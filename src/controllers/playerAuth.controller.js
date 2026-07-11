@@ -1,5 +1,6 @@
 const PlayerAccount = require('../models/playerAccount.model');
 const Academy = require('../models/academy.model');
+const { checkPlayerPortal, portalDisabledMessage } = require('../utils/playerPortal');
 const AppError = require('../utils/AppError');
 const { generatePlayerToken } = require('../utils/jwt');
 const { sendSuccess } = require('../utils/apiResponse');
@@ -32,10 +33,25 @@ const playerLogin = async (req, res, next) => {
     return next(new AppError('اسم المستخدم أو كلمة المرور غير صحيحة', 401));
   }
   if (!account.isActive) {
-    return next(new AppError('تم تعطيل هذا الحساب', 403));
+    // كود صريح للواجهة: الحساب معطّل من الأكاديمية.
+    return res.status(403).json({
+      success: false,
+      code: 'ACCOUNT_DISABLED',
+      message: 'تم تعطيل هذا الحساب. يرجى التواصل مع أكاديميتك.',
+    });
   }
   if (!account.playerId || account.playerId.isActive === false) {
     return next(new AppError('حساب اللاعب غير متاح', 403));
+  }
+
+  // بوابة اللاعب مرهونة بميزة playerPortalEnabled واشتراك حي للأكاديمية.
+  const portal = await checkPlayerPortal(account.academyId);
+  if (!portal.active) {
+    return res.status(403).json({
+      success: false,
+      code: portal.code,
+      message: portalDisabledMessage(portal.code),
+    });
   }
 
   const academy = await Academy.findById(account.academyId).select('name');

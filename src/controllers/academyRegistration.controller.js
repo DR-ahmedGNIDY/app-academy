@@ -54,6 +54,8 @@ const registerAcademy = async (req, res, next) => {
       maxPlayers: TRIAL_MAX_PLAYERS,
       startDate: now,
       endDate,
+      // الأكاديمية الجديدة تحصل على بوابة اللاعب مفعّلة تلقائياً أثناء التجربة.
+      playerPortalEnabled: true,
       history: [
         {
           action: 'CREATED_TRIAL',
