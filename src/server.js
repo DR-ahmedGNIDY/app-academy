@@ -17,6 +17,7 @@ const academyRegistrationRoutes = require('./routes/academyRegistration.routes')
 const academyRoutes = require('./routes/academy.routes');
 const userRoutes = require('./routes/user.routes');
 const playerRoutes = require('./routes/player.routes');
+const groupRoutes = require('./routes/group.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const evaluationRoutes = require('./routes/evaluation.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
@@ -98,6 +99,7 @@ app.use('/api/v1/register-academy', academyRegistrationRoutes);
 app.use('/api/v1/academies', academyRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/players', playerRoutes);
+app.use('/api/v1/groups', groupRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
 app.use('/api/v1/evaluations', evaluationRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);

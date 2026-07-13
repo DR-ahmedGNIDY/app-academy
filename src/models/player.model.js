@@ -81,6 +81,12 @@ const playerSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    // المجموعة التدريبية الخاصة باللاعب.
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Group',
+      default: null,
+    },
     // أيام حضور اللاعب الأسبوعية (Multi-select).
     attendanceDays: {
       type: [String],
@@ -105,6 +111,7 @@ const playerSchema = new mongoose.Schema(
       transform: function (doc, ret) {
         ret._id = ret._id.toString();
         ret.academyId = ret.academyId?.toString();
+        if (ret.groupId) ret.groupId = ret.groupId.toString();
         delete ret.__v;
         delete ret.image_public_id;
         return ret;
@@ -117,6 +124,7 @@ const playerSchema = new mongoose.Schema(
 playerSchema.index({ academyId: 1 });
 playerSchema.index({ academyId: 1, isActive: 1 });
 playerSchema.index({ academyId: 1, sport: 1 });
+playerSchema.index({ academyId: 1, groupId: 1 });
 playerSchema.index(
   { fullName: 'text', playerCode: 'text', parentPhone: 'text' },
   { name: 'player_text_search' }

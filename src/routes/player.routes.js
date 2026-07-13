@@ -8,6 +8,7 @@ const {
   updatePlayer,
   deletePlayer,
   deletePlayerImage,
+  changeGroup,
 } = require('../controllers/player.controller');
 const {
   getPlayerAccount,
@@ -55,6 +56,9 @@ const createValidators = [
   body('sport')
     .optional({ checkFalsy: true })
     .isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
+  body('groupId')
+    .notEmpty().withMessage('المجموعة مطلوبة')
+    .isMongoId().withMessage('معرّف المجموعة غير صحيح'),
 ];
 
 const updateValidators = [
@@ -80,6 +84,15 @@ const updateValidators = [
   body('sport')
     .optional({ checkFalsy: true })
     .isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
+  body('groupId')
+    .optional({ checkFalsy: true })
+    .isMongoId().withMessage('معرّف المجموعة غير صحيح'),
+];
+
+const changeGroupValidators = [
+  body('groupId')
+    .notEmpty().withMessage('المجموعة مطلوبة')
+    .isMongoId().withMessage('معرّف المجموعة غير صحيح'),
 ];
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -154,5 +167,8 @@ router.delete('/:id', deletePlayer);
 
 // DELETE /players/:id/image
 router.delete('/:id/image', deletePlayerImage);
+
+// PATCH /players/:id/change-group
+router.patch('/:id/change-group', changeGroupValidators, validate, changeGroup);
 
 module.exports = router;

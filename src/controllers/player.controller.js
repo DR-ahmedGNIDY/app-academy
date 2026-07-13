@@ -1,5 +1,6 @@
 const Player = require('../models/player.model');
 const Academy = require('../models/academy.model');
+const Group = require('../models/group.model');
 const PlayerAccount = require('../models/playerAccount.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
@@ -30,6 +31,19 @@ const parseArrayField = (raw) => {
     return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
   }
   return undefined;
+};
+
+// يتحقق من صحة المجموعة المُختارة للاعب: موجودة، ونفس الأكاديمية، ونفس الرياضة.
+const validateGroupForPlayer = async (groupId, academyId, sport) => {
+  const group = await Group.findById(groupId);
+  if (!group) throw new AppError('المجموعة غير موجودة', 404);
+  if (group.academyId.toString() !== academyId.toString()) {
+    throw new AppError('المجموعة لا تنتمي لهذه الأكاديمية', 422);
+  }
+  if (group.sportId !== sport) {
+    throw new AppError('رياضة المجموعة لا تطابق رياضة اللاعب', 422);
+  }
+  return group;
 };
 
 // ─── GET /players ───────────────────────────────────────────────────────────
@@ -220,6 +234,11 @@ const createPlayer = async (req, res, next) => {
     playerData.sport = chosen;
   }
 
+  // ── Group assignment ──────────────────────────────────────────────────────
+  if (!req.body.groupId) return next(new AppError('المجموعة مطلوبة', 422));
+  const group = await validateGroupForPlayer(req.body.groupId, academyId, playerData.sport);
+  playerData.groupId = group._id;
+
   // ── Attendance days ───────────────────────────────────────────────────────
   const attendanceDays = parseArrayField(req.body.attendanceDays);
   if (attendanceDays !== undefined) playerData.attendanceDays = attendanceDays;
@@ -304,6 +323,16 @@ const updatePlayer = async (req, res, next) => {
     if (chosen) player.sport = chosen;
   }
 
+  // Group update
+  if (req.body.groupId !== undefined) {
+    if (!req.body.groupId) {
+      player.groupId = null;
+    } else {
+      const group = await validateGroupForPlayer(req.body.groupId, player.academyId, player.sport);
+      player.groupId = group._id;
+    }
+  }
+
   // Attendance days update
   const attendanceDays = parseArrayField(req.body.attendanceDays);
   if (attendanceDays !== undefined) player.attendanceDays = attendanceDays;
@@ -370,6 +399,31 @@ const deletePlayerImage = async (req, res, next) => {
   return sendSuccess(res, { message: 'تم حذف صورة اللاعب بنجاح' });
 };
 
+// ─── PATCH /players/:id/change-group ─────────────────────────────────────────
+const changeGroup = async (req, res, next) => {
+  const player = await Player.findById(req.params.id);
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+
+  if (req.user.role !== 'super_admin' &&
+      player.academyId.toString() !== req.user.academyId?.toString()) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا اللاعب', 403));
+  }
+
+  if (!req.body.groupId) return next(new AppError('المجموعة مطلوبة', 422));
+
+  const group = await validateGroupForPlayer(req.body.groupId, player.academyId, player.sport);
+  player.groupId = group._id;
+  await player.save();
+
+  logger.info(`Player group changed: ${player.playerCode} -> ${group.name}`);
+  logActivity(req, {
+    actionType: 'CHANGE_PLAYER_GROUP', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
+
+  return sendSuccess(res, { data: player, message: 'تم نقل اللاعب إلى المجموعة الجديدة بنجاح' });
+};
+
 module.exports = {
   getPlayers,
   searchPlayers,
@@ -378,4 +432,5 @@ module.exports = {
   updatePlayer,
   deletePlayer,
   deletePlayerImage,
+  changeGroup,
 };
