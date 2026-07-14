@@ -56,8 +56,10 @@ const createValidators = [
   body('sport')
     .optional({ checkFalsy: true })
     .isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
+  // المجموعة اختيارية على مستوى الشكل؛ المتحكّم يفرضها فقط إذا كانت الأكاديمية
+  // تملك مجموعات لرياضة اللاعب (أكاديمية بلا مجموعات → groupId=null مسموح).
   body('groupId')
-    .notEmpty().withMessage('المجموعة مطلوبة')
+    .optional({ checkFalsy: true })
     .isMongoId().withMessage('معرّف المجموعة غير صحيح'),
 ];
 

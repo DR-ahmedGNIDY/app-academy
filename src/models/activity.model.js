@@ -37,6 +37,8 @@ const activitySchema = new mongoose.Schema(
         // حسابات اللاعبين (Player Portal) — Audit Log
         'CREATE_PLAYER_ACCOUNT', 'CHANGE_PLAYER_PASSWORD', 'RESET_PLAYER_PASSWORD',
         'ENABLE_PLAYER_ACCOUNT', 'DISABLE_PLAYER_ACCOUNT',
+        // المجموعات (Groups / Training cohorts)
+        'CREATE_GROUP', 'UPDATE_GROUP', 'DELETE_GROUP', 'PLAYER_MOVED_BETWEEN_GROUPS',
       ],
     },
     entityType: {
@@ -45,7 +47,7 @@ const activitySchema = new mongoose.Schema(
       enum: [
         'PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY',
         'STAFF', 'STAFF_ATTENDANCE', 'PAYROLL', 'EXPENSE',
-        'PLATFORM_SUBSCRIPTION', 'PLAYER_ACCOUNT',
+        'PLATFORM_SUBSCRIPTION', 'PLAYER_ACCOUNT', 'GROUP',
       ],
     },
     entityId: {

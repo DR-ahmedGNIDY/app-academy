@@ -35,6 +35,16 @@ const getDashboardStats = async (req, res, next) => {
           _id: null,
           totalPlayers: { $sum: 1 },
           activePlayers: { $sum: { $cond: ['$isActive', 1, 0] } },
+          // لاعبون نشطون بلا مجموعة (groupId = null أو غير موجود).
+          playersWithoutGroup: {
+            $sum: {
+              $cond: [
+                { $and: ['$isActive', { $eq: ['$groupId', null] }] },
+                1,
+                0,
+              ],
+            },
+          },
         },
       },
     ]),
@@ -77,21 +87,64 @@ const getDashboardStats = async (req, res, next) => {
       { $group: { _id: null, averageEvaluationScore: { $avg: '$average' } } },
     ]),
 
-    // 4. Groups aggregation
+    // 4. Groups aggregation — يُرفق عدد اللاعبين النشطين لكل مجموعة لحساب الإحصاءات.
     Group.aggregate([
       { $match: match },
+      {
+        $lookup: {
+          from: 'players',
+          let: { gid: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$groupId', '$$gid'] },
+                    { $eq: ['$isActive', true] },
+                  ],
+                },
+              },
+            },
+            { $count: 'c' },
+          ],
+          as: 'playersArr',
+        },
+      },
+      {
+        $addFields: {
+          playersCount: { $ifNull: [{ $arrayElemAt: ['$playersArr.c', 0] }, 0] },
+        },
+      },
       {
         $group: {
           _id: null,
           totalGroups: { $sum: 1 },
           activeGroups: { $sum: { $cond: ['$isActive', 1, 0] } },
+          totalPlayersInGroups: { $sum: '$playersCount' },
+          totalCapacity: { $sum: { $ifNull: ['$capacity', 0] } },
+          largestGroupSize: { $max: '$playersCount' },
         },
       },
     ]),
   ]);
 
-  const players = playerStats[0] || { totalPlayers: 0, activePlayers: 0 };
-  const groups = groupStats[0] || { totalGroups: 0, activeGroups: 0 };
+  const players = playerStats[0] || { totalPlayers: 0, activePlayers: 0, playersWithoutGroup: 0 };
+  const groups = groupStats[0] || {
+    totalGroups: 0,
+    activeGroups: 0,
+    totalPlayersInGroups: 0,
+    totalCapacity: 0,
+    largestGroupSize: 0,
+  };
+
+  // إحصاءات مجموعات مُشتقّة (للقراءة فقط — لا تُخزَّن).
+  const totalGroups = groups.totalGroups || 0;
+  const avgPlayersPerGroup = totalGroups
+    ? Math.round(((groups.totalPlayersInGroups || 0) / totalGroups) * 10) / 10
+    : 0;
+  const groupOccupancyRate = groups.totalCapacity
+    ? Math.round(((groups.totalPlayersInGroups || 0) / groups.totalCapacity) * 100)
+    : 0;
   const subs = subscriptionStats[0] || {};
 
   const extract = (facetArr) => (facetArr && facetArr[0] ? facetArr[0] : {});
@@ -118,6 +171,10 @@ const getDashboardStats = async (req, res, next) => {
       averageEvaluationScore: Math.round((evalStats.averageEvaluationScore || 0) * 100) / 100,
       totalGroups: groups.totalGroups || 0,
       activeGroups: groups.activeGroups || 0,
+      playersWithoutGroup: players.playersWithoutGroup || 0,
+      largestGroupSize: groups.largestGroupSize || 0,
+      groupOccupancyRate,
+      avgPlayersPerGroup,
     },
   });
 };

@@ -7,23 +7,12 @@ const groupSchema = new mongoose.Schema(
       ref: 'Academy',
       required: [true, 'معرّف الأكاديمية مطلوب'],
     },
-    sportId: {
-      type: String,
-      trim: true,
-      default: null,
-    },
     name: {
       type: String,
       required: [true, 'اسم المجموعة مطلوب'],
       trim: true,
       minlength: [2, 'الاسم يجب أن يكون حرفين على الأقل'],
       maxlength: [150, 'الاسم لا يمكن أن يتجاوز 150 حرف'],
-    },
-    ageGroup: {
-      type: String,
-      trim: true,
-      maxlength: [60, 'الفئة العمرية لا يمكن أن تتجاوز 60 حرف'],
-      default: null,
     },
     capacity: {
       type: Number,
@@ -33,6 +22,11 @@ const groupSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    // ترتيب العرض داخل الأكاديمية (سحب وإفلات). إضافي ومتوافق — الافتراضي 0.
+    order: {
+      type: Number,
+      default: 0,
     },
   },
   {
@@ -50,7 +44,7 @@ const groupSchema = new mongoose.Schema(
 );
 
 groupSchema.index({ academyId: 1 });
-groupSchema.index({ academyId: 1, sportId: 1 });
+groupSchema.index({ academyId: 1, order: 1 });
 
 const Group = mongoose.model('Group', groupSchema);
 module.exports = Group;

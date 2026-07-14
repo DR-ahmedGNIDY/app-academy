@@ -3,11 +3,12 @@ const { body } = require('express-validator');
 const {
   getGroups,
   getGroupsByAcademy,
-  getGroupsBySport,
   getGroupById,
   createGroup,
   updateGroup,
   deleteGroup,
+  reorderGroups,
+  movePlayers,
 } = require('../controllers/group.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
@@ -23,44 +24,40 @@ const createValidators = [
   body('name')
     .notEmpty().withMessage('اسم المجموعة مطلوب')
     .isLength({ min: 2, max: 150 }).withMessage('الاسم يجب أن يكون بين 2 و 150 حرف'),
-  body('ageGroup')
-    .optional({ checkFalsy: true })
-    .isLength({ max: 60 }).withMessage('الفئة العمرية لا يمكن أن تتجاوز 60 حرف'),
   body('capacity')
     .optional({ checkFalsy: true })
     .isInt({ min: 1 }).withMessage('السعة القصوى غير صحيحة'),
-  body('sportId')
-    .optional({ checkFalsy: true })
-    .isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
+  body('isActive').optional().isBoolean().withMessage('قيمة التفعيل غير صحيحة'),
 ];
 
 const updateValidators = [
   body('name').optional().isLength({ min: 2, max: 150 }).withMessage('الاسم يجب أن يكون بين 2 و 150 حرف'),
-  body('ageGroup').optional({ checkFalsy: true }).isLength({ max: 60 }).withMessage('الفئة العمرية لا يمكن أن تتجاوز 60 حرف'),
   body('capacity').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('السعة القصوى غير صحيحة'),
   body('isActive').optional().isBoolean().withMessage('قيمة التفعيل غير صحيحة'),
-  body('sportId').optional({ checkFalsy: true }).isLength({ max: 60 }).withMessage('اسم الرياضة غير صحيح'),
 ];
 
 // GET /groups
 router.get('/', getGroups);
 
+// PATCH /groups/reorder ← يجب أن يسبق /:id لتفادي التعارض
+router.patch('/reorder', restrictTo('super_admin', 'academy_admin', 'admin'), reorderGroups);
+
 // GET /groups/academy/:academyId
 router.get('/academy/:academyId', getGroupsByAcademy);
-
-// GET /groups/sport/:sportId
-router.get('/sport/:sportId', getGroupsBySport);
 
 // GET /groups/:id
 router.get('/:id', getGroupById);
 
-// POST /groups
-router.post('/', restrictTo('super_admin'), createValidators, validate, createGroup);
+// POST /groups — إدارة المجموعات متاحة لمستوى الأكاديمية (مُقيَّد بأكاديميته في الـ controller).
+router.post('/', restrictTo('super_admin', 'academy_admin', 'admin'), createValidators, validate, createGroup);
 
 // PATCH /groups/:id
-router.patch('/:id', restrictTo('super_admin', 'academy_admin'), updateValidators, validate, updateGroup);
+router.patch('/:id', restrictTo('super_admin', 'academy_admin', 'admin'), updateValidators, validate, updateGroup);
 
 // DELETE /groups/:id
-router.delete('/:id', restrictTo('super_admin'), deleteGroup);
+router.delete('/:id', restrictTo('super_admin', 'academy_admin', 'admin'), deleteGroup);
+
+// PATCH /groups/:id/move-players — نقل عدة لاعبين إلى هذه المجموعة
+router.patch('/:id/move-players', restrictTo('super_admin', 'academy_admin', 'admin'), movePlayers);
 
 module.exports = router;

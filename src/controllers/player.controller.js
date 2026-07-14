@@ -33,15 +33,13 @@ const parseArrayField = (raw) => {
   return undefined;
 };
 
-// يتحقق من صحة المجموعة المُختارة للاعب: موجودة، ونفس الأكاديمية، ونفس الرياضة.
-const validateGroupForPlayer = async (groupId, academyId, sport) => {
+// يتحقق من صحة المجموعة المُختارة للاعب: موجودة ونفس الأكاديمية فقط.
+// المجموعات أقسام تنظيمية مستقلة عن الرياضة — لا يوجد تحقق رياضة إطلاقاً.
+const validateGroupForPlayer = async (groupId, academyId) => {
   const group = await Group.findById(groupId);
   if (!group) throw new AppError('المجموعة غير موجودة', 404);
   if (group.academyId.toString() !== academyId.toString()) {
     throw new AppError('المجموعة لا تنتمي لهذه الأكاديمية', 422);
-  }
-  if (group.sportId !== sport) {
-    throw new AppError('رياضة المجموعة لا تطابق رياضة اللاعب', 422);
   }
   return group;
 };
@@ -87,6 +85,13 @@ const getPlayers = async (req, res, next) => {
   // Sport filter (multi-sport academies)
   if (req.query.sport && req.query.sport.trim().length > 0) {
     filter.sport = req.query.sport.trim();
+  }
+
+  // Group filter — بُعد فلترة مستقل عن الرياضة. يدعم Sport + Group معاً.
+  // 'none' = اللاعبون بلا مجموعة.
+  if (req.query.groupId && req.query.groupId.trim().length > 0) {
+    const g = req.query.groupId.trim();
+    filter.groupId = g === 'none' ? null : g;
   }
 
   // Attendance-day filter — matches players whose attendanceDays array contains the day
@@ -235,9 +240,13 @@ const createPlayer = async (req, res, next) => {
   }
 
   // ── Group assignment ──────────────────────────────────────────────────────
-  if (!req.body.groupId) return next(new AppError('المجموعة مطلوبة', 422));
-  const group = await validateGroupForPlayer(req.body.groupId, academyId, playerData.sport);
-  playerData.groupId = group._id;
+  // المجموعة اختيارية دائماً. إن اختِيرت يتم التحقق من انتمائها للأكاديمية فقط.
+  if (req.body.groupId) {
+    const group = await validateGroupForPlayer(req.body.groupId, academyId);
+    playerData.groupId = group._id;
+  } else {
+    playerData.groupId = null;
+  }
 
   // ── Attendance days ───────────────────────────────────────────────────────
   const attendanceDays = parseArrayField(req.body.attendanceDays);
@@ -328,7 +337,7 @@ const updatePlayer = async (req, res, next) => {
     if (!req.body.groupId) {
       player.groupId = null;
     } else {
-      const group = await validateGroupForPlayer(req.body.groupId, player.academyId, player.sport);
+      const group = await validateGroupForPlayer(req.body.groupId, player.academyId);
       player.groupId = group._id;
     }
   }
@@ -411,13 +420,13 @@ const changeGroup = async (req, res, next) => {
 
   if (!req.body.groupId) return next(new AppError('المجموعة مطلوبة', 422));
 
-  const group = await validateGroupForPlayer(req.body.groupId, player.academyId, player.sport);
+  const group = await validateGroupForPlayer(req.body.groupId, player.academyId);
   player.groupId = group._id;
   await player.save();
 
   logger.info(`Player group changed: ${player.playerCode} -> ${group.name}`);
   logActivity(req, {
-    actionType: 'CHANGE_PLAYER_GROUP', entityType: 'PLAYER',
+    actionType: 'PLAYER_MOVED_BETWEEN_GROUPS', entityType: 'PLAYER',
     entityId: player._id, entityName: player.fullName, academyId: player.academyId,
   });
 

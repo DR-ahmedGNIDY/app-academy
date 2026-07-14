@@ -8,10 +8,10 @@ const { logActivity } = require('../utils/activityLogger');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// يحدّد فلتر الأكاديمية حسب الدور: super_admin/admin يمرّرون academyId صراحةً،
-// وغيرهم مُقيَّد حتمياً بأكاديميته.
+// يحدّد فلتر الأكاديمية حسب الدور: super_admin وحده يمرّر academyId صراحةً،
+// وكل من عداه (academy_admin / admin) مُقيَّد حتمياً بأكاديميته — نفس نمط اللاعبين/التقييمات.
 const resolveAcademyFilter = (req) => {
-  if (req.user.role === 'super_admin' || req.user.role === 'admin') {
+  if (req.user.role === 'super_admin') {
     if (!req.query.academyId) {
       throw new AppError('معرّف الأكاديمية مطلوب', 400);
     }
@@ -20,11 +20,10 @@ const resolveAcademyFilter = (req) => {
   return req.user.academyId;
 };
 
-// حارس وصول: يمنع الوصول لمجموعة تخصّ أكاديمية أخرى.
+// حارس وصول: يمنع الوصول لمجموعة تخصّ أكاديمية أخرى. super_admin وحده يتجاوز القيد.
 const assertAccess = (req, group) => {
   if (
     req.user.role !== 'super_admin' &&
-    req.user.role !== 'admin' &&
     group.academyId.toString() !== req.user.academyId?.toString()
   ) {
     throw new AppError('ليس لديك صلاحية للوصول إلى هذه المجموعة', 403);
@@ -63,12 +62,13 @@ const getGroups = async (req, res, next) => {
 
   const academyId = resolveAcademyFilter(req);
   const filter = { academyId };
-  if (req.query.sportId && req.query.sportId.trim().length > 0) {
-    filter.sportId = req.query.sportId.trim();
+  // بحث بالاسم (اختياري).
+  if (req.query.search && req.query.search.trim().length > 0) {
+    filter.name = { $regex: req.query.search.trim(), $options: 'i' };
   }
 
   const [groups, total] = await Promise.all([
-    Group.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
+    Group.find(filter).sort({ order: 1, created_at: -1 }).skip(skip).limit(limit),
     Group.countDocuments(filter),
   ]);
 
@@ -82,27 +82,14 @@ const getGroupsByAcademy = async (req, res, next) => {
   const { academyId } = req.params;
   if (
     req.user.role !== 'super_admin' &&
-    req.user.role !== 'admin' &&
     academyId !== req.user.academyId?.toString()
   ) {
     return next(new AppError('ليس لديك صلاحية للوصول إلى مجموعات هذه الأكاديمية', 403));
   }
 
   const filter = { academyId };
-  if (req.query.sportId && req.query.sportId.trim().length > 0) {
-    filter.sportId = req.query.sportId.trim();
-  }
 
-  const groups = await Group.find(filter).sort({ name: 1 });
-  const data = await withOccupancy(groups);
-
-  return sendSuccess(res, { data, message: 'تم جلب المجموعات بنجاح' });
-};
-
-// ─── GET /groups/sport/:sportId ──────────────────────────────────────────────
-const getGroupsBySport = async (req, res, next) => {
-  const academyId = resolveAcademyFilter(req);
-  const groups = await Group.find({ academyId, sportId: req.params.sportId }).sort({ name: 1 });
+  const groups = await Group.find(filter).sort({ order: 1, name: 1 });
   const data = await withOccupancy(groups);
 
   return sendSuccess(res, { data, message: 'تم جلب المجموعات بنجاح' });
@@ -134,30 +121,19 @@ const createGroup = async (req, res, next) => {
     academyId = req.user.academyId;
   }
 
-  const academy = await Academy.findById(academyId).select('sports');
+  const academy = await Academy.findById(academyId).select('_id');
   if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
-  const academySports = Array.isArray(academy.sports) && academy.sports.length > 0
-    ? academy.sports
-    : ['كرة سلة'];
 
+  // المجموعة تقسيم تنظيمي داخل الأكاديمية فقط — لا علاقة لها بالرياضة.
   const groupData = {
     academyId,
     name: req.body.name,
   };
 
-  if (academySports.length === 1) {
-    groupData.sportId = academySports[0];
-  } else {
-    const chosen = req.body.sportId ? String(req.body.sportId).trim() : '';
-    if (!chosen) return next(new AppError('الرياضة مطلوبة', 422));
-    if (!academySports.includes(chosen)) {
-      return next(new AppError('الرياضة المختارة غير متاحة في هذه الأكاديمية', 422));
-    }
-    groupData.sportId = chosen;
-  }
-
-  if (req.body.ageGroup !== undefined) groupData.ageGroup = req.body.ageGroup;
   if (req.body.capacity !== undefined) groupData.capacity = req.body.capacity;
+  if (req.body.isActive !== undefined) groupData.isActive = req.body.isActive;
+  // المجموعة الجديدة تُلحق في نهاية ترتيب الأكاديمية.
+  groupData.order = await Group.countDocuments({ academyId });
   const group = await Group.create(groupData);
 
   logger.info(`Group created: ${group.name}`);
@@ -176,23 +152,11 @@ const updateGroup = async (req, res, next) => {
 
   assertAccess(req, group);
 
-  const allowedFields = ['name', 'ageGroup', 'capacity', 'isActive'];
+  const allowedFields = ['name', 'capacity', 'isActive'];
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) {
       group[field] = req.body[field] === '' ? null : req.body[field];
     }
-  }
-
-  if (req.body.sportId !== undefined) {
-    const academy = await Academy.findById(group.academyId).select('sports');
-    const academySports = academy && Array.isArray(academy.sports) && academy.sports.length > 0
-      ? academy.sports
-      : ['كرة سلة'];
-    const chosen = String(req.body.sportId).trim();
-    if (chosen && !academySports.includes(chosen)) {
-      return next(new AppError('الرياضة المختارة غير متاحة في هذه الأكاديمية', 422));
-    }
-    if (chosen) group.sportId = chosen;
   }
 
   await group.save();
@@ -213,7 +177,16 @@ const deleteGroup = async (req, res, next) => {
 
   assertAccess(req, group);
 
-  await Player.updateMany({ groupId: group._id }, { $set: { groupId: null } });
+  // منع حذف مجموعة تحتوي لاعبين نشطين — لتفادي اللاعبين اليتامى.
+  const playersCount = await Player.countDocuments({ groupId: group._id, isActive: true });
+  if (playersCount > 0) {
+    return res.status(409).json({
+      success: false,
+      code: 'GROUP_NOT_EMPTY',
+      message: 'لا يمكن حذف المجموعة لأنها تحتوي على لاعبين. قم بنقل اللاعبين أولاً.',
+    });
+  }
+
   await group.deleteOne();
 
   logger.info(`Group deleted: ${group.name}`);
@@ -225,12 +198,72 @@ const deleteGroup = async (req, res, next) => {
   return sendSuccess(res, { message: 'تم حذف المجموعة بنجاح' });
 };
 
+// ─── PATCH /groups/reorder ────────────────────────────────────────────────────
+// يحدّث حقل order فقط وفق ترتيب المعرّفات المُرسَل. مُقيَّد بأكاديمية المستخدم.
+const reorderGroups = async (req, res, next) => {
+  const scopeId = req.user.role === 'super_admin'
+    ? (req.body.academyId || req.query.academyId)
+    : req.user.academyId;
+  if (!scopeId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+
+  const ids = Array.isArray(req.body.orderedIds) ? req.body.orderedIds : [];
+  if (ids.length === 0) return next(new AppError('قائمة الترتيب مطلوبة', 422));
+
+  // تأكيد أن كل المجموعات تخصّ هذه الأكاديمية (حارس عزل).
+  const owned = await Group.find({ _id: { $in: ids } }).select('academyId');
+  const allOwned = owned.length === ids.length &&
+    owned.every((g) => g.academyId.toString() === scopeId.toString());
+  if (!allOwned) {
+    return next(new AppError('ليس لديك صلاحية لإعادة ترتيب هذه المجموعات', 403));
+  }
+
+  const ops = ids.map((id, index) => ({
+    updateOne: {
+      filter: { _id: id, academyId: scopeId },
+      update: { $set: { order: index } },
+    },
+  }));
+  await Group.bulkWrite(ops);
+
+  return sendSuccess(res, { message: 'تم تحديث ترتيب المجموعات بنجاح' });
+};
+
+// ─── PATCH /groups/:id/move-players ───────────────────────────────────────────
+// ينقل عدة لاعبين إلى مجموعة الوجهة. تحقق أكاديمية فقط — لا تحقق رياضة.
+const movePlayers = async (req, res, next) => {
+  const targetGroup = await Group.findById(req.params.id);
+  if (!targetGroup) return next(new AppError('المجموعة غير موجودة', 404));
+
+  assertAccess(req, targetGroup);
+
+  const playerIds = Array.isArray(req.body.playerIds) ? req.body.playerIds : [];
+  if (playerIds.length === 0) return next(new AppError('قائمة اللاعبين مطلوبة', 422));
+
+  // عزل: كل اللاعبين يجب أن يكونوا ضمن نفس أكاديمية المجموعة.
+  const result = await Player.updateMany(
+    { _id: { $in: playerIds }, academyId: targetGroup.academyId },
+    { $set: { groupId: targetGroup._id } }
+  );
+
+  logger.info(`Moved ${result.modifiedCount} players to group: ${targetGroup.name}`);
+  logActivity(req, {
+    actionType: 'PLAYER_MOVED_BETWEEN_GROUPS', entityType: 'GROUP',
+    entityId: targetGroup._id, entityName: targetGroup.name, academyId: targetGroup.academyId,
+  });
+
+  return sendSuccess(res, {
+    data: { movedCount: result.modifiedCount },
+    message: 'تم نقل اللاعبين بنجاح',
+  });
+};
+
 module.exports = {
   getGroups,
   getGroupsByAcademy,
-  getGroupsBySport,
   getGroupById,
   createGroup,
   updateGroup,
   deleteGroup,
+  reorderGroups,
+  movePlayers,
 };
