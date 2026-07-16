@@ -6,9 +6,25 @@ const { sendSuccess } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
 const logger = require('../utils/logger');
 
-// حساب تاريخ النهاية حسب الباقة من تاريخ بداية معطى.
-const computeEndDate = (startDate, plan) => {
+// عدد الأشهر المسموح بها للباقات (يطابق واجهة اختيار الباقة في التطبيق).
+const ALLOWED_DURATION_MONTHS = [1, 3, 6, 12];
+
+// تطبيع مدة الاشتراك بالأشهر القادمة من الطلب (اختيارية وغير كاسرة).
+const normalizeDurationMonths = (value) => {
+  const n = Number(value);
+  return ALLOWED_DURATION_MONTHS.includes(n) ? n : null;
+};
+
+// حساب تاريخ النهاية من تاريخ بداية معطى.
+// - إذا مُرّرت مدة صريحة بالأشهر (durationMonths) تُستخدم مباشرة (1/3/6/12).
+// - وإلا يُرجَع للسلوك القديم حسب الباقة (شهر/سنة) للحفاظ على التوافق.
+const computeEndDate = (startDate, plan, durationMonths) => {
   const end = new Date(startDate);
+  const months = normalizeDurationMonths(durationMonths);
+  if (months != null) {
+    end.setMonth(end.getMonth() + months);
+    return end;
+  }
   if (plan === 'month') end.setMonth(end.getMonth() + 1);
   else if (plan === 'year') end.setFullYear(end.getFullYear() + 1);
   else end.setDate(end.getDate() + 7); // احتياطي (trial)
@@ -30,6 +46,7 @@ const buildRow = (academy, sub, playerCount) => {
           rawStatus: s.status,
           plan: s.plan,
           maxPlayers: s.maxPlayers,
+          durationMonths: s.durationMonths ?? null,
           startDate: s.startDate,
           endDate: s.endDate,
           daysRemaining: s.daysRemaining,
@@ -82,7 +99,7 @@ const ensureSubscription = async (academyId) => {
 // body: { plan: 'month'|'year', maxPlayers }
 const activateSubscription = async (req, res, next) => {
   const { academyId } = req.params;
-  const { plan, maxPlayers, playerPortalEnabled } = req.body;
+  const { plan, maxPlayers, durationMonths, playerPortalEnabled } = req.body;
 
   const academy = await Academy.findById(academyId).select('name');
   if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
@@ -90,11 +107,13 @@ const activateSubscription = async (req, res, next) => {
   const sub = await ensureSubscription(academyId);
 
   const now = new Date();
-  const endDate = computeEndDate(now, plan);
+  const months = normalizeDurationMonths(durationMonths);
+  const endDate = computeEndDate(now, plan, months);
 
   sub.status = 'active';
   sub.plan = plan;
   sub.maxPlayers = maxPlayers;
+  if (months != null) sub.durationMonths = months;
   sub.startDate = now;
   sub.endDate = endDate;
   // خيار "Enable Player Portal" داخل نافذة التفعيل — اختياري وغير كاسر:
@@ -134,7 +153,7 @@ const activateSubscription = async (req, res, next) => {
 // body: { plan?, maxPlayers?, status? } — تعديل بدون إنشاء اشتراك جديد + تسجيل في History.
 const updateSubscription = async (req, res, next) => {
   const { academyId } = req.params;
-  const { plan, maxPlayers, status, playerPortalEnabled } = req.body;
+  const { plan, maxPlayers, durationMonths, status, playerPortalEnabled } = req.body;
 
   const academy = await Academy.findById(academyId).select('name');
   if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
@@ -142,14 +161,18 @@ const updateSubscription = async (req, res, next) => {
   const sub = await ensureSubscription(academyId);
   const now = new Date();
   let action = 'UPDATED';
+  const months = normalizeDurationMonths(durationMonths);
 
-  if (plan !== undefined && plan !== sub.plan) {
-    sub.plan = plan;
-    // عند تغيير الباقة (شهر↔سنة) نُعيد حساب تاريخ النهاية من تاريخ البداية الحالي.
-    if (plan === 'month' || plan === 'year') {
-      sub.endDate = computeEndDate(sub.startDate || now, plan);
-      if (sub.effectiveStatus() !== 'active' && new Date() <= sub.endDate) sub.status = 'active';
-    }
+  if (plan !== undefined) sub.plan = plan;
+
+  // إعادة حساب تاريخ النهاية عند تمرير مدة صريحة (1/3/6/12) أو تغيير الباقة.
+  if (months != null) {
+    sub.durationMonths = months;
+    sub.endDate = computeEndDate(sub.startDate || now, sub.plan, months);
+    if (sub.effectiveStatus() !== 'active' && new Date() <= sub.endDate) sub.status = 'active';
+  } else if (plan === 'month' || plan === 'year') {
+    sub.endDate = computeEndDate(sub.startDate || now, plan);
+    if (sub.effectiveStatus() !== 'active' && new Date() <= sub.endDate) sub.status = 'active';
   }
 
   if (maxPlayers !== undefined) sub.maxPlayers = maxPlayers;
