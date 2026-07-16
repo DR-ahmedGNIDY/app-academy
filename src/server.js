@@ -32,6 +32,7 @@ const playerAuthRoutes = require('./routes/playerAuth.routes');
 const playerPortalRoutes = require('./routes/playerPortal.routes');
 const chatRoutes = require('./routes/chat.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const academyAlbumRoutes = require('./routes/academyAlbum.routes');
 
 const app = express();
 
@@ -113,6 +114,7 @@ app.use('/api/v1/auth/player', playerAuthRoutes);
 app.use('/api/v1/player', playerPortalRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/academy-album', academyAlbumRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -34,6 +34,19 @@ const academyLogoStorage = new CloudinaryStorage({
   },
 });
 
+// صور ألبوم الأكاديمية — نفس خدمة Cloudinary، مجلد مستقل. لا خدمة رفع جديدة.
+const academyAlbumStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'basketball_academy/albums',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 1600, height: 1600, crop: 'limit' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  },
+});
+
 const staffPhotoStorage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -80,6 +93,12 @@ const uploadStaffPhoto = multer({
   fileFilter,
 });
 
+const uploadAlbumImage = multer({
+  storage: academyAlbumStorage,
+  limits: { fileSize: MAX_IMAGE_BYTES },
+  fileFilter,
+});
+
 const deleteImage = async (publicId) => {
   return cloudinary.uploader.destroy(publicId);
 };
@@ -89,6 +108,7 @@ module.exports = {
   uploadPlayerImage,
   uploadAcademyLogo,
   uploadStaffPhoto,
+  uploadAlbumImage,
   deleteImage,
   MAX_IMAGE_BYTES,
 };

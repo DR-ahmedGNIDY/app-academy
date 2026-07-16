@@ -39,6 +39,8 @@ const activitySchema = new mongoose.Schema(
         'ENABLE_PLAYER_ACCOUNT', 'DISABLE_PLAYER_ACCOUNT',
         // المجموعات (Groups / Training cohorts)
         'CREATE_GROUP', 'UPDATE_GROUP', 'DELETE_GROUP', 'PLAYER_MOVED_BETWEEN_GROUPS',
+        // ألبوم الأكاديمية (Academy Album)
+        'CREATE_ALBUM_IMAGE', 'UPDATE_ALBUM_IMAGE', 'DELETE_ALBUM_IMAGE',
       ],
     },
     entityType: {
@@ -47,7 +49,7 @@ const activitySchema = new mongoose.Schema(
       enum: [
         'PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY',
         'STAFF', 'STAFF_ATTENDANCE', 'PAYROLL', 'EXPENSE',
-        'PLATFORM_SUBSCRIPTION', 'PLAYER_ACCOUNT', 'GROUP',
+        'PLATFORM_SUBSCRIPTION', 'PLAYER_ACCOUNT', 'GROUP', 'ALBUM',
       ],
     },
     entityId: {
