@@ -51,6 +51,9 @@ const staffPhotoStorage = new CloudinaryStorage({
 // وCloudinary يعيد ترميز الصورة بعد الرفع كطبقة دفاع ثانية.
 const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 
+// حد أقصى موحّد لحجم أي صورة تُرفع في المنصة.
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
 const fileFilter = (req, file, cb) => {
   if (ALLOWED_IMAGE_MIME.includes(file.mimetype)) {
     cb(null, true);
@@ -61,19 +64,19 @@ const fileFilter = (req, file, cb) => {
 
 const uploadPlayerImage = multer({
   storage: playerImageStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter,
 });
 
 const uploadAcademyLogo = multer({
   storage: academyLogoStorage,
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter,
 });
 
 const uploadStaffPhoto = multer({
   storage: staffPhotoStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter,
 });
 
@@ -81,4 +84,11 @@ const deleteImage = async (publicId) => {
   return cloudinary.uploader.destroy(publicId);
 };
 
-module.exports = { cloudinary, uploadPlayerImage, uploadAcademyLogo, uploadStaffPhoto, deleteImage };
+module.exports = {
+  cloudinary,
+  uploadPlayerImage,
+  uploadAcademyLogo,
+  uploadStaffPhoto,
+  deleteImage,
+  MAX_IMAGE_BYTES,
+};

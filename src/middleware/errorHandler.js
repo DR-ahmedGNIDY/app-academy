@@ -33,7 +33,7 @@ const errorHandler = (err, req, res, next) => {
 
   if (err.code === 'LIMIT_FILE_SIZE') {
     statusCode = 400;
-    message = 'حجم الملف أكبر من المسموح به';
+    message = 'حجم الصورة يجب ألا يزيد عن 2 ميجابايت.';
   }
 
   if (statusCode >= 500) {

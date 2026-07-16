@@ -116,6 +116,9 @@ const academySendMessage = async (req, res, next) => {
   convo.unreadForPlayer += 1;
   await convo.save();
 
+  // نُنشئ إشعار NEW_MESSAGE للاستخدام المستقبلي (Push Notifications)، لكنه
+  // مُستبعَد من مركز إشعارات النظام في العرض (انظر notification.controller).
+  // عدّاد رسائل اللاعب مصدره unreadForPlayer وحده، لا مركز الإشعارات.
   notify({
     recipientType: 'player', recipientId: playerId, academyId,
     type: 'NEW_MESSAGE', title: 'رسالة جديدة من الأكاديمية',
@@ -177,7 +180,9 @@ const playerSendMessage = async (req, res, next) => {
   convo.unreadForAcademy += 1;
   await convo.save();
 
-  // إشعار الأكاديمية (يُعرض لمدرائها) برسالة جديدة من اللاعب.
+  // نُنشئ إشعار NEW_MESSAGE للاستخدام المستقبلي (Push Notifications)، لكنه
+  // مُستبعَد من مركز إشعارات النظام في العرض (انظر notification.controller).
+  // عدّاد رسائل المدير مصدره unreadForAcademy وحده، لا مركز الإشعارات.
   notify({
     recipientType: 'academy', recipientId: player.academyId, academyId: player.academyId,
     type: 'NEW_MESSAGE', title: `رسالة جديدة من ${player.fullName}`,

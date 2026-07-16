@@ -2,11 +2,22 @@ const Notification = require('../models/notification.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 
+// أنواع إشعارات تُنشأ في الـ backend لكنها لا تُعرض في مركز إشعارات النظام.
+// إشعارات الرسائل (NEW_MESSAGE) محجوزة لـ Push Notifications مستقبلاً؛ داخل
+// التطبيق تُعرض عبر شاشة المحادثات وعدّاد unread الخاص بها، لا هنا.
+const HIDDEN_FROM_CENTER = ['NEW_MESSAGE'];
+const centerFilter = (recipientType, recipientId) => ({
+  recipientType,
+  recipientId,
+  type: { $nin: HIDDEN_FROM_CENTER },
+});
+
 // جلب قائمة إشعارات + عدد غير المقروء لمستلم مُحدَّد.
 const listFor = async (recipientType, recipientId, res) => {
+  const base = centerFilter(recipientType, recipientId);
   const [items, unread] = await Promise.all([
-    Notification.find({ recipientType, recipientId }).sort({ createdAt: -1 }).limit(100),
-    Notification.countDocuments({ recipientType, recipientId, isRead: false }),
+    Notification.find(base).sort({ createdAt: -1 }).limit(100),
+    Notification.countDocuments({ ...base, isRead: false }),
   ]);
   return sendSuccess(res, {
     data: { items, unread },
@@ -28,8 +39,10 @@ const markOneRead = async (recipientType, recipientId, id, res, next) => {
 };
 
 const markAllRead = async (recipientType, recipientId, res) => {
+  // نقتصر على الإشعارات المعروضة في المركز حتى لا نُعلّم إشعارات الرسائل
+  // المخفيّة (NEW_MESSAGE) كمقروءة عبر هذا الزر.
   await Notification.updateMany(
-    { recipientType, recipientId, isRead: false },
+    { ...centerFilter(recipientType, recipientId), isRead: false },
     { $set: { isRead: true } }
   );
   return sendSuccess(res, { message: 'تم تعليم كل الإشعارات كمقروءة' });
