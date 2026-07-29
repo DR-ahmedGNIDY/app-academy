@@ -36,6 +36,14 @@ const registerValidators = [
     .isLength({ min: 2, max: 60 }).withMessage('نوع الرياضة غير صحيح'),
   body('password')
     .isLength({ min: 8 }).withMessage('كلمة المرور يجب أن تكون 8 أحرف على الأقل'),
+  // العملة اختيارية (تُشتق من الدولة في الفرونت)؛ إن أُرسلت نتحقق من صحتها.
+  body('currency')
+    .optional()
+    .isIn([
+      'EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'LBP', 'SYP',
+      'IQD', 'ILS', 'YER', 'LYD', 'TND', 'DZD', 'MAD', 'MRU', 'SDG', 'SOS',
+      'DJF', 'KMF', 'USD',
+    ]).withMessage('العملة غير صحيحة'),
 ];
 
 // POST /api/v1/register-academy

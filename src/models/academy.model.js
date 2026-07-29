@@ -24,6 +24,14 @@ const academySchema = new mongoose.Schema(
       trim: true,
       match: [/^[0-9+\-\s()]{7,20}$/, 'رقم الهاتف غير صحيح'],
     },
+    // رقم واتساب المتجر — تُرسَل إليه طلبات الشراء. اختياري وهجرة آمنة:
+    // إذا لم يُضبط تقع رسالة الشراء تلقائياً على phone (fallback في الـ controller).
+    storeWhatsApp: {
+      type: String,
+      trim: true,
+      default: '',
+      match: [/^[0-9+\-\s()]{0,20}$/, 'رقم واتساب المتجر غير صحيح'],
+    },
     address: {
       type: String,
       required: [true, 'العنوان مطلوب'],
@@ -32,8 +40,14 @@ const academySchema = new mongoose.Schema(
     },
     currency: {
       type: String,
+      // العملة تُشتق من دولة الأكاديمية (كل الدول العربية) — نسمح بكل عملاتها
+      // + USD للمرونة/التوافق مع الأكاديميات القديمة.
       enum: {
-        values: ['EGP', 'SAR', 'KWD', 'USD'],
+        values: [
+          'EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'LBP', 'SYP',
+          'IQD', 'ILS', 'YER', 'LYD', 'TND', 'DZD', 'MAD', 'MRU', 'SDG', 'SOS',
+          'DJF', 'KMF', 'USD',
+        ],
         message: 'العملة غير صحيحة',
       },
       // الأكاديميات الحالية تبقى على الجنيه المصري (هجرة آمنة)

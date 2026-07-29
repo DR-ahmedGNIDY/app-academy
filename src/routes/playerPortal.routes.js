@@ -9,6 +9,7 @@ const {
 } = require('../controllers/notification.controller');
 const { updateMyPhoto, deleteMyPhoto } = require('../controllers/playerProfile.controller');
 const { getPlayerAlbum } = require('../controllers/academyAlbum.controller');
+const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -28,6 +29,15 @@ router.delete('/photo', deleteMyPhoto);
 
 // ── ألبوم الأكاديمية (قراءة فقط — أكاديمية اللاعب حصراً) ──
 router.get('/album', getPlayerAlbum);
+
+// ── متجر الأكاديمية (قراءة + إنشاء طلب شراء — أكاديمية اللاعب حصراً) ──
+router.get('/store', getPlayerStore);
+router.post(
+  '/store/orders',
+  [body('productId').isMongoId().withMessage('معرّف المنتج غير صحيح')],
+  validate,
+  createPlayerOrder
+);
 
 // ── محادثة اللاعب مع أكاديميته (نص فقط) ──
 router.get('/chat', getPlayerConversation);

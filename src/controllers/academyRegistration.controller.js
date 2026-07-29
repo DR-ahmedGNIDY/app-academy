@@ -13,7 +13,8 @@ const TRIAL_MAX_PLAYERS = 7;
 // ينشئ تلقائياً: Academy + User(academy_admin) + AcademySubscription(trial).
 // يسجّل الدخول مباشرة (يعيد token) لتجربة سلسة.
 const registerAcademy = async (req, res, next) => {
-  const { academyName, adminName, phone, email, city, sport, password } = req.body;
+  const { academyName, adminName, phone, email, city, sport, password, currency } =
+    req.body;
 
   // منع تكرار البريد قبل أي إنشاء.
   const existing = await User.findOne({ email: String(email).toLowerCase().trim() });
@@ -30,6 +31,8 @@ const registerAcademy = async (req, res, next) => {
       name: academyName,
       phone,
       address: city, // المدينة تُخزَّن كعنوان (النموذج الحالي يتطلب address)
+      // العملة مشتقّة من الدولة المختارة في الفرونت؛ الافتراضي EGP لو غابت.
+      currency: currency || 'EGP',
       sports: [sport],
       logo_url: req.file ? req.file.path : null,
       logo_public_id: req.file ? req.file.filename : null,
