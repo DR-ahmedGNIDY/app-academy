@@ -91,6 +91,10 @@ const updateAcademy = async (req, res, next) => {
   if (req.body.phone) academy.phone = req.body.phone;
   if (req.body.address) academy.address = req.body.address;
   if (req.body.currency) academy.currency = req.body.currency;
+  if (req.body.websiteUrl !== undefined) academy.websiteUrl = req.body.websiteUrl;
+  if (req.body.facebookUrl !== undefined) academy.facebookUrl = req.body.facebookUrl;
+  if (req.body.tiktokUrl !== undefined) academy.tiktokUrl = req.body.tiktokUrl;
+  if (req.body.instagramUrl !== undefined) academy.instagramUrl = req.body.instagramUrl;
 
   const sports = parseSports(req.body.sports);
   if (sports && sports.length) academy.sports = sports;

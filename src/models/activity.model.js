@@ -44,6 +44,8 @@ const activitySchema = new mongoose.Schema(
         // متجر الأكاديمية (Academy Store)
         'CREATE_PRODUCT', 'UPDATE_PRODUCT', 'DELETE_PRODUCT',
         'CREATE_STORE_ORDER', 'UPDATE_STORE_ORDER',
+        // المباريات (Matches)
+        'CREATE_MATCH', 'UPDATE_MATCH', 'DELETE_MATCH',
       ],
     },
     entityType: {
@@ -53,7 +55,7 @@ const activitySchema = new mongoose.Schema(
         'PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY',
         'STAFF', 'STAFF_ATTENDANCE', 'PAYROLL', 'EXPENSE',
         'PLATFORM_SUBSCRIPTION', 'PLAYER_ACCOUNT', 'GROUP', 'ALBUM',
-        'PRODUCT', 'STORE_ORDER',
+        'PRODUCT', 'STORE_ORDER', 'MATCH',
       ],
     },
     entityId: {

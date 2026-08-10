@@ -21,6 +21,10 @@ const academyValidators = [
     .isLength({ max: 300 }).withMessage('العنوان لا يمكن أن يتجاوز 300 حرف'),
   body('currency').optional()
     .isIn(['EGP', 'SAR', 'KWD', 'USD']).withMessage('العملة غير صحيحة'),
+  body('websiteUrl').optional({ checkFalsy: true }).isLength({ max: 300 }),
+  body('facebookUrl').optional({ checkFalsy: true }).isLength({ max: 300 }),
+  body('tiktokUrl').optional({ checkFalsy: true }).isLength({ max: 300 }),
+  body('instagramUrl').optional({ checkFalsy: true }).isLength({ max: 300 }),
 ];
 
 router.route('/')

@@ -38,6 +38,27 @@ const academySchema = new mongoose.Schema(
       trim: true,
       maxlength: [300, 'العنوان لا يمكن أن يتجاوز 300 حرف'],
     },
+    // روابط التواصل الاجتماعي — اختيارية، تظهر للاعب في لوحة التحكم الخاصة به إن وُجدت.
+    websiteUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    facebookUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    tiktokUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    instagramUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     currency: {
       type: String,
       // العملة تُشتق من دولة الأكاديمية (كل الدول العربية) — نسمح بكل عملاتها

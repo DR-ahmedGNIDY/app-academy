@@ -45,6 +45,11 @@ const attendanceSchema = new mongoose.Schema(
       },
       default: 'present',
     },
+    // true إذا سُجّل هذا الحضور رغم انتهاء اشتراك اللاعب وقت المسح (زر "حضور والدفع لاحقاً").
+    subscriptionExpiredAtCheckin: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

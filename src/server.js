@@ -34,6 +34,7 @@ const chatRoutes = require('./routes/chat.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const academyAlbumRoutes = require('./routes/academyAlbum.routes');
 const storeRoutes = require('./routes/store.routes');
+const matchRoutes = require('./routes/match.routes');
 
 const app = express();
 
@@ -117,6 +118,7 @@ app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/academy-album', academyAlbumRoutes);
 app.use('/api/v1/store', storeRoutes);
+app.use('/api/v1/matches', matchRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
