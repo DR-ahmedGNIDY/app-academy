@@ -309,8 +309,30 @@ const getAttendanceReport = async (req, res, next) => {
   });
 };
 
+// ─── DELETE /attendance/:id ────────────────────────────────────────────────────
+const deleteAttendance = async (req, res, next) => {
+  const record = await Attendance.findById(req.params.id);
+  if (!record) return next(new AppError('سجل الحضور غير موجود', 404));
+
+  if (
+    req.user.role !== 'super_admin' &&
+    record.academyId.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية لحذف هذا السجل', 403));
+  }
+
+  await record.deleteOne();
+
+  logActivity(req, {
+    actionType: 'DELETE_ATTENDANCE', entityType: 'ATTENDANCE',
+    entityId: record._id, academyId: record.academyId,
+  });
+  return sendSuccess(res, { message: 'تم حذف سجل الحضور بنجاح' });
+};
+
 module.exports = {
   recordAttendance,
   getAttendance,
   getAttendanceReport,
+  deleteAttendance,
 };

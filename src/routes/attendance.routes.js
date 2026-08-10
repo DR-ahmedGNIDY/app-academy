@@ -4,8 +4,9 @@ const {
   recordAttendance,
   getAttendance,
   getAttendanceReport,
+  deleteAttendance,
 } = require('../controllers/attendance.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, restrictTo } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
@@ -43,5 +44,8 @@ router.get('/', getAttendance);
 
 // POST /attendance
 router.post('/', recordValidators, validate, recordAttendance);
+
+// DELETE /attendance/:id
+router.delete('/:id', restrictTo('super_admin', 'academy_admin', 'admin'), deleteAttendance);
 
 module.exports = router;
