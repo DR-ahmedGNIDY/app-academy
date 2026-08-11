@@ -95,6 +95,8 @@ const updateAcademy = async (req, res, next) => {
   if (req.body.facebookUrl !== undefined) academy.facebookUrl = req.body.facebookUrl;
   if (req.body.tiktokUrl !== undefined) academy.tiktokUrl = req.body.tiktokUrl;
   if (req.body.instagramUrl !== undefined) academy.instagramUrl = req.body.instagramUrl;
+  if (req.body.cardColor !== undefined) academy.cardColor = req.body.cardColor;
+  if (req.body.cardSlogan !== undefined) academy.cardSlogan = req.body.cardSlogan;
 
   const sports = parseSports(req.body.sports);
   if (sports && sports.length) academy.sports = sports;

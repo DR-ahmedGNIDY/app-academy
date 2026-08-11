@@ -59,6 +59,18 @@ const academySchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    // تخصيص بطاقة اللاعب — لون البطاقة وشعارها النصي، اختياريان لكل أكاديمية.
+    cardColor: {
+      type: String,
+      enum: { values: ['navy', 'red', 'orange', 'black'], message: 'لون البطاقة غير صحيح' },
+      default: 'navy',
+    },
+    cardSlogan: {
+      type: String,
+      trim: true,
+      maxlength: [40, 'شعار البطاقة لا يمكن أن يتجاوز 40 حرف'],
+      default: 'معًا نحو القمة',
+    },
     currency: {
       type: String,
       // العملة تُشتق من دولة الأكاديمية (كل الدول العربية) — نسمح بكل عملاتها
