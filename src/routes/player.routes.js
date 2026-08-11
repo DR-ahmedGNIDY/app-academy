@@ -18,7 +18,7 @@ const {
   togglePlayerAccount,
   getAccountStats,
 } = require('../controllers/playerAccountAdmin.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, requirePermission } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 const { uploadPlayerImage } = require('../config/cloudinary');
 const { blockIfNotWritable, enforcePlayerLimit } = require('../middleware/subscriptionGuard');
@@ -148,6 +148,7 @@ router.patch(
 // POST /players
 router.post(
   '/',
+  requirePermission('register_players'),
   enforcePlayerLimit, // يمنع تجاوز الحد الأقصى للاعبين (7 أثناء التجربة)
   uploadPlayerImage.single('image'),
   createValidators,

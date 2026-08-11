@@ -9,7 +9,7 @@ const {
   deleteEvaluation,
   getEvaluationsByAcademy,
 } = require('../controllers/evaluation.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
@@ -82,7 +82,7 @@ router.get('/academy/:academyId', getEvaluationsByAcademy);
 router.get('/:id', getEvaluationById);
 
 // POST /evaluations
-router.post('/', createValidators, validate, createEvaluation);
+router.post('/', requirePermission('record_evaluations'), createValidators, validate, createEvaluation);
 
 // PUT  /evaluations/:id
 router.put('/:id', updateValidators, validate, updateEvaluation);

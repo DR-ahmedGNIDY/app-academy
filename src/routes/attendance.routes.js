@@ -6,7 +6,7 @@ const {
   getAttendanceReport,
   deleteAttendance,
 } = require('../controllers/attendance.controller');
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
@@ -37,7 +37,7 @@ const recordValidators = [
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 // GET /attendance/report   ← MUST be before any '/:id' style route
-router.get('/report', getAttendanceReport);
+router.get('/report', requirePermission('view_reports'), getAttendanceReport);
 
 // GET /attendance
 router.get('/', getAttendance);

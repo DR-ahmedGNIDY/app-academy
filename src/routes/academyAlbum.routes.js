@@ -7,7 +7,7 @@ const {
   deleteAlbumImage,
   reorderAlbum,
 } = require('../controllers/academyAlbum.controller');
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { protect, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const { uploadAlbumImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -18,7 +18,7 @@ router.use(protect);
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
 router.use(blockIfNotWritable);
 
-const manage = restrictTo('super_admin', 'academy_admin', 'admin');
+const manage = requirePermission('use_album');
 
 // GET /academy-album — قائمة مرقّمة (Pagination)
 router.get('/', getAlbum);

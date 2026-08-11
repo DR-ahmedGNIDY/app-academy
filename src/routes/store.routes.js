@@ -11,7 +11,7 @@ const {
   getOrders,
   updateOrderStatus,
 } = require('../controllers/store.controller');
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { protect, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const { uploadStoreImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -22,7 +22,7 @@ router.use(protect);
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
 router.use(blockIfNotWritable);
 
-const manage = restrictTo('super_admin', 'academy_admin', 'admin');
+const manage = requirePermission('use_store');
 
 // ── إعدادات المتجر (رقم واتساب) ──
 router.get('/settings', getStoreSettings);

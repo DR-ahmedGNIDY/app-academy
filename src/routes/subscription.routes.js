@@ -9,7 +9,7 @@ const {
   getSubscriptionsByAcademy,
   getRevenueSummary,
 } = require('../controllers/subscription.controller');
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
@@ -67,8 +67,8 @@ const notesValidators = [
 // GET  /subscriptions/player/:playerId
 router.get('/player/:playerId', getSubscriptionsByPlayer);
 
-// GET  /subscriptions/academy/:academyId/revenue — admin blocked
-router.get('/academy/:academyId/revenue', restrictTo('super_admin', 'academy_admin'), getRevenueSummary);
+// GET  /subscriptions/academy/:academyId/revenue — admin needs view_dashboard_revenue permission
+router.get('/academy/:academyId/revenue', requirePermission('view_dashboard_revenue'), getRevenueSummary);
 
 // GET  /subscriptions/academy/:academyId — admin blocked (uses player-level access instead)
 router.get('/academy/:academyId', restrictTo('super_admin', 'academy_admin'), getSubscriptionsByAcademy);
@@ -77,7 +77,7 @@ router.get('/academy/:academyId', restrictTo('super_admin', 'academy_admin'), ge
 router.get('/:id', getSubscriptionById);
 
 // POST /subscriptions
-router.post('/', createValidators, validate, createSubscription);
+router.post('/', requirePermission('record_subscriptions'), createValidators, validate, createSubscription);
 
 // PATCH /subscriptions/:id/notes
 router.patch('/:id/notes', notesValidators, validate, updateSubscriptionNotes);

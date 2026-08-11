@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const ADMIN_PERMISSIONS = require('../constants/permissions');
 
 const userSchema = new mongoose.Schema(
   {
@@ -28,6 +29,16 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['super_admin', 'academy_admin', 'admin'],
       default: 'academy_admin',
+    },
+    // صلاحيات دقيقة لحسابات role='admin' فقط (يُنشئها مدير الأكاديمية عبر
+    // /users). super_admin و academy_admin غير مقيَّدين بهذا الحقل إطلاقاً.
+    permissions: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (arr) => arr.every((p) => ADMIN_PERMISSIONS.includes(p)),
+        message: 'صلاحية غير صحيحة',
+      },
     },
     academyId: {
       type: mongoose.Schema.Types.ObjectId,

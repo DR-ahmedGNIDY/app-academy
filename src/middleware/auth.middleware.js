@@ -36,4 +36,17 @@ const restrictTo = (...roles) => {
   };
 };
 
-module.exports = { protect, restrictTo };
+// super_admin/academy_admin غير مقيَّدين؛ role='admin' يحتاج المفتاح ضمن permissions.
+const requirePermission = (key) => {
+  return (req, res, next) => {
+    if (req.user.role === 'super_admin' || req.user.role === 'academy_admin') {
+      return next();
+    }
+    if (req.user.role === 'admin' && req.user.permissions?.includes(key)) {
+      return next();
+    }
+    return next(new AppError('ليس لديك صلاحية لتنفيذ هذا الإجراء', 403));
+  };
+};
+
+module.exports = { protect, restrictTo, requirePermission };

@@ -12,6 +12,7 @@ const {
 } = require('../controllers/user.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
+const ADMIN_PERMISSIONS = require('../constants/permissions');
 
 const router = express.Router();
 
@@ -34,6 +35,12 @@ const createUserValidators = [
   body('role')
     .optional()
     .isIn(['academy_admin', 'admin']).withMessage('الدور غير صحيح'),
+  body('permissions')
+    .optional()
+    .isArray().withMessage('الصلاحيات يجب أن تكون قائمة'),
+  body('permissions.*')
+    .optional()
+    .isIn(ADMIN_PERMISSIONS).withMessage('صلاحية غير صحيحة'),
 ];
 
 const updateUserValidators = [
@@ -69,11 +76,11 @@ router.get(
   getUserById
 );
 
-// POST /api/v1/users — super_admin only
+// POST /api/v1/users — super_admin (أي أكاديمية) أو academy_admin (أكاديميته فقط)
 router.post(
   '/',
   protect,
-  restrictTo('super_admin'),
+  restrictTo('super_admin', 'academy_admin'),
   createUserValidators,
   validate,
   createUser

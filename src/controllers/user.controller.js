@@ -4,16 +4,23 @@ const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const ADMIN_PERMISSIONS = require('../constants/permissions');
 
 /**
  * POST /api/v1/users
- * super_admin only — creates academy_admin or admin users
+ * super_admin — أي أكاديمية، دور academy_admin أو admin.
+ * academy_admin — أكاديميته فقط، ودائماً دور admin (لا يقدر يُنشئ academy_admin آخر)،
+ * مع صلاحيات دقيقة (permissions) اختيارية.
  */
 const createUser = async (req, res, next) => {
-  const { name, email, password, academyId, role: requestedRole } = req.body;
+  const { name, email, password, academyId, role: requestedRole, permissions } = req.body;
+  const isAcademyAdmin = req.user.role === 'academy_admin';
+
+  // النطاق: academy_admin مقيَّد بأكاديميته هو فقط، بغض النظر عمّا يُرسله في الـ body.
+  const targetAcademyId = isAcademyAdmin ? req.user.academyId?.toString() : academyId;
 
   // Verify the target academy exists and is active
-  const academy = await Academy.findById(academyId);
+  const academy = await Academy.findById(targetAcademyId);
   if (!academy) {
     return next(new AppError('الأكاديمية المحددة غير موجودة', 404));
   }
@@ -27,9 +34,15 @@ const createUser = async (req, res, next) => {
     return next(new AppError('البريد الإلكتروني مستخدم بالفعل', 409));
   }
 
-  // super_admin can create academy_admin or admin; default to academy_admin
+  // academy_admin يُنشئ حسابات "admin" فقط (أبداً academy_admin)؛
+  // super_admin يقدر يختار academy_admin أو admin (كما كان، افتراضياً academy_admin).
   const allowedRoles = ['academy_admin', 'admin'];
-  const newRole = allowedRoles.includes(requestedRole) ? requestedRole : 'academy_admin';
+  const newRole = isAcademyAdmin
+    ? 'admin'
+    : (allowedRoles.includes(requestedRole) ? requestedRole : 'academy_admin');
+  const newPermissions = newRole === 'admin' && Array.isArray(permissions)
+    ? permissions.filter((p) => ADMIN_PERMISSIONS.includes(p))
+    : [];
   logger.info(`createUser — requestedRole="${requestedRole}" → newRole="${newRole}"`);
 
   const user = await User.create({
@@ -37,13 +50,14 @@ const createUser = async (req, res, next) => {
     email,
     password,
     role: newRole,
-    academyId,
+    academyId: targetAcademyId,
+    permissions: newPermissions,
   });
 
   logger.info(`User created: ${user.email} for academy ${academy.name} by ${req.user.email}`);
   logActivity(req, {
     actionType: 'ADD_USER', entityType: 'USER',
-    entityId: user._id, entityName: user.name, academyId,
+    entityId: user._id, entityName: user.name, academyId: targetAcademyId,
   });
 
   // Populate academyId before returning so the response includes academy details
