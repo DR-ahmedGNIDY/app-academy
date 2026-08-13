@@ -101,7 +101,9 @@ const fileFilter = (req, file, cb) => {
 // لاستيعاب الفيديو — الصور تبقى عملياً صغيرة رغم رفع السقف.
 const ALLOWED_VIDEO_MIME = ['video/mp4', 'video/quicktime', 'video/webm'];
 const ALLOWED_ALBUM_MIME = [...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME];
-const MAX_ALBUM_MEDIA_BYTES = 10 * 1024 * 1024;
+// 20MB — يطابق client_max_body_size المضبوط على nginx لـ api.nosait.com،
+// بحيث لا يُرفض الرفع من nginx قبل ما يوصل حتى لمنطق multer هنا.
+const MAX_ALBUM_MEDIA_BYTES = 20 * 1024 * 1024;
 
 const albumFileFilter = (req, file, cb) => {
   if (ALLOWED_ALBUM_MIME.includes(file.mimetype)) {
