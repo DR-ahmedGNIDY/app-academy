@@ -18,13 +18,53 @@ const resolveAcademyFilter = (req) => {
 };
 
 // حارس وصول لصورة تخصّ أكاديمية أخرى. super_admin وحده يتجاوز القيد.
+// يعمل لكل من حسابات المدراء (req.user) وحسابات اللاعبين (req.player).
 const assertAccess = (req, item) => {
+  if (req.player) {
+    if (item.academyId.toString() !== req.player.academyId?.toString()) {
+      throw new AppError('ليس لديك صلاحية للوصول إلى هذا العنصر', 403);
+    }
+    return;
+  }
   if (
     req.user.role !== 'super_admin' &&
     item.academyId.toString() !== req.user.academyId?.toString()
   ) {
-    throw new AppError('ليس لديك صلاحية للوصول إلى هذه الصورة', 403);
+    throw new AppError('ليس لديك صلاحية للوصول إلى هذا العنصر', 403);
   }
+};
+
+// هوية صاحب الطلب (لاعب أو حساب إداري) — مصدر وحيد يُستخدم في اللايك/الكومنت.
+const getRequester = (req) => {
+  if (req.player) {
+    return { userType: 'player', userId: req.player.id, name: req.player.fullName };
+  }
+  return { userType: 'admin', userId: req.user.id, name: req.user.name };
+};
+
+// يحوّل مستند الألبوم الخام إلى شكل العميل: عدّاد لايك + isLiked + تعليقات مرتّبة.
+const toClientItem = (item, requester) => {
+  const json = item.toJSON();
+  const likes = json.likes || [];
+  const comments = json.comments || [];
+
+  json.likesCount = likes.length;
+  json.isLiked = likes.some(
+    (l) => l.userType === requester.userType && l.userId === String(requester.userId)
+  );
+  json.commentsCount = comments.length;
+  json.comments = comments
+    .map((c) => ({
+      id: c._id,
+      userType: c.userType,
+      authorName: c.authorName,
+      text: c.text,
+      created_at: c.created_at,
+      isMine: c.userType === requester.userType && c.userId === String(requester.userId),
+    }))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  delete json.likes;
+  return json;
 };
 
 // صفحة موحّدة لجلب ألبوم أكاديمية معيّنة (Pagination + Lazy Loading).
@@ -32,6 +72,7 @@ const paginateAlbum = async (academyId, req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(60, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
+  const requester = getRequester(req);
 
   const [items, total] = await Promise.all([
     AcademyAlbum.find({ academyId })
@@ -42,7 +83,7 @@ const paginateAlbum = async (academyId, req, res) => {
   ]);
 
   return sendPaginated(res, {
-    data: items.map((i) => i.toJSON()),
+    data: items.map((i) => toClientItem(i, requester)),
     total,
     page,
     limit,
@@ -70,22 +111,25 @@ const createAlbumImage = async (req, res, next) => {
   const title = String(req.body.title || '').trim();
   if (!title) return next(new AppError('العنوان مطلوب', 400));
 
+  const mediaType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+
   const item = await AcademyAlbum.create({
     academyId,
     title,
     description: String(req.body.description || '').trim(),
     image_url: req.file.path,
     image_public_id: req.file.filename,
+    mediaType,
   });
 
-  logger.info(`Album image added: ${item._id} (academy ${academyId})`);
+  logger.info(`Album ${mediaType} added: ${item._id} (academy ${academyId})`);
   logActivity(req, {
     actionType: 'CREATE_ALBUM_IMAGE', entityType: 'ALBUM',
     entityId: item._id, entityName: title, academyId,
   });
   return sendSuccess(res, {
-    data: item.toJSON(),
-    message: 'تمت إضافة الصورة بنجاح',
+    data: toClientItem(item, getRequester(req)),
+    message: mediaType === 'video' ? 'تمت إضافة الفيديو بنجاح' : 'تمت إضافة الصورة بنجاح',
     statusCode: 201,
   });
 };
@@ -110,7 +154,7 @@ const updateAlbumImage = async (req, res, next) => {
     actionType: 'UPDATE_ALBUM_IMAGE', entityType: 'ALBUM',
     entityId: item._id, entityName: item.title, academyId: item.academyId,
   });
-  return sendSuccess(res, { data: item.toJSON(), message: 'تم تحديث الصورة بنجاح' });
+  return sendSuccess(res, { data: toClientItem(item, getRequester(req)), message: 'تم تحديث الصورة بنجاح' });
 };
 
 // ─── DELETE /academy-album/:id ───────────────────────────────────────────────
@@ -120,7 +164,7 @@ const deleteAlbumImage = async (req, res, next) => {
   assertAccess(req, item);
 
   if (item.image_public_id) {
-    await deleteImage(item.image_public_id).catch(() => {});
+    await deleteImage(item.image_public_id, item.mediaType === 'video' ? 'video' : 'image').catch(() => {});
   }
   await item.deleteOne();
 
@@ -149,6 +193,82 @@ const reorderAlbum = async (req, res, next) => {
   return sendSuccess(res, { message: 'تم تحديث ترتيب الصور بنجاح' });
 };
 
+// ─── POST /:id/like (تبديل إعجاب — لاعب أو حساب إداري) ───────────────────────
+const toggleLike = async (req, res, next) => {
+  const item = await AcademyAlbum.findById(req.params.id);
+  if (!item) return next(new AppError('العنصر غير موجود', 404));
+  assertAccess(req, item);
+
+  const requester = getRequester(req);
+  const idx = item.likes.findIndex(
+    (l) => l.userType === requester.userType && l.userId.toString() === String(requester.userId)
+  );
+
+  if (idx === -1) {
+    item.likes.push({ userType: requester.userType, userId: requester.userId });
+  } else {
+    item.likes.splice(idx, 1);
+  }
+  await item.save();
+
+  return sendSuccess(res, {
+    data: toClientItem(item, requester),
+    message: idx === -1 ? 'تم الإعجاب' : 'تم إلغاء الإعجاب',
+  });
+};
+
+// ─── POST /:id/comments (إضافة تعليق — لاعب أو حساب إداري) ───────────────────
+const addComment = async (req, res, next) => {
+  const item = await AcademyAlbum.findById(req.params.id);
+  if (!item) return next(new AppError('العنصر غير موجود', 404));
+  assertAccess(req, item);
+
+  const text = String(req.body.text || '').trim();
+  if (!text) return next(new AppError('نص التعليق مطلوب', 400));
+  if (text.length > 500) return next(new AppError('التعليق لا يمكن أن يتجاوز 500 حرف', 400));
+
+  const requester = getRequester(req);
+  item.comments.push({
+    userType: requester.userType,
+    userId: requester.userId,
+    authorName: requester.name || (requester.userType === 'player' ? 'لاعب' : 'مسؤول'),
+    text,
+  });
+  await item.save();
+
+  return sendSuccess(res, {
+    data: toClientItem(item, requester),
+    message: 'تمت إضافة التعليق بنجاح',
+    statusCode: 201,
+  });
+};
+
+// ─── DELETE /:id/comments/:commentId ─────────────────────────────────────────
+// صاحب التعليق يحذف تعليقه؛ أما academy_admin/super_admin فيقدر يحذف أي تعليق (إشراف).
+const deleteComment = async (req, res, next) => {
+  const item = await AcademyAlbum.findById(req.params.id);
+  if (!item) return next(new AppError('العنصر غير موجود', 404));
+  assertAccess(req, item);
+
+  const comment = item.comments.id(req.params.commentId);
+  if (!comment) return next(new AppError('التعليق غير موجود', 404));
+
+  const requester = getRequester(req);
+  const isOwner =
+    comment.userType === requester.userType && comment.userId.toString() === String(requester.userId);
+  const isModerator =
+    requester.userType === 'admin' && ['super_admin', 'academy_admin'].includes(req.user.role);
+
+  if (!isOwner && !isModerator) {
+    return next(new AppError('لا يمكنك حذف تعليق غير خاص بك', 403));
+  }
+
+  comment.deleteOne();
+  await item.save();
+
+  return sendSuccess(res, { data: toClientItem(item, requester), message: 'تم حذف التعليق بنجاح' });
+};
+
 module.exports = {
   getAlbum,
   getPlayerAlbum,
@@ -156,4 +276,7 @@ module.exports = {
   updateAlbumImage,
   deleteAlbumImage,
   reorderAlbum,
+  toggleLike,
+  addComment,
+  deleteComment,
 };

@@ -34,16 +34,25 @@ const academyLogoStorage = new CloudinaryStorage({
   },
 });
 
-// صور ألبوم الأكاديمية — نفس خدمة Cloudinary، مجلد مستقل. لا خدمة رفع جديدة.
+// صور/فيديوهات ألبوم الأكاديمية — نفس خدمة Cloudinary، مجلد مستقل.
+// resource_type يُحدَّد ديناميكياً حسب نوع الملف المرفوع.
 const academyAlbumStorage = new CloudinaryStorage({
   cloudinary,
-  params: {
-    folder: 'basketball_academy/albums',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation: [
-      { width: 1600, height: 1600, crop: 'limit' },
-      { quality: 'auto', fetch_format: 'auto' },
-    ],
+  params: async (req, file) => {
+    const isVideo = file.mimetype.startsWith('video/');
+    return {
+      folder: 'basketball_academy/albums',
+      resource_type: isVideo ? 'video' : 'image',
+      allowed_formats: isVideo
+        ? ['mp4', 'mov', 'webm']
+        : ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: isVideo
+        ? undefined
+        : [
+            { width: 1600, height: 1600, crop: 'limit' },
+            { quality: 'auto', fetch_format: 'auto' },
+          ],
+    };
   },
 });
 
@@ -88,6 +97,20 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// ألبوم الأكاديمية يقبل صور أو فيديو (نفس حقل الرفع). حد أقصى موحّد أكبر
+// لاستيعاب الفيديو — الصور تبقى عملياً صغيرة رغم رفع السقف.
+const ALLOWED_VIDEO_MIME = ['video/mp4', 'video/quicktime', 'video/webm'];
+const ALLOWED_ALBUM_MIME = [...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME];
+const MAX_ALBUM_MEDIA_BYTES = 10 * 1024 * 1024;
+
+const albumFileFilter = (req, file, cb) => {
+  if (ALLOWED_ALBUM_MIME.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('يُسمح فقط برفع صور (JPG/PNG/WEBP) أو فيديو (MP4/MOV/WEBM)'), false);
+  }
+};
+
 const uploadPlayerImage = multer({
   storage: playerImageStorage,
   limits: { fileSize: MAX_IMAGE_BYTES },
@@ -108,8 +131,8 @@ const uploadStaffPhoto = multer({
 
 const uploadAlbumImage = multer({
   storage: academyAlbumStorage,
-  limits: { fileSize: MAX_IMAGE_BYTES },
-  fileFilter,
+  limits: { fileSize: MAX_ALBUM_MEDIA_BYTES },
+  fileFilter: albumFileFilter,
 });
 
 const uploadStoreImage = multer({
@@ -118,8 +141,8 @@ const uploadStoreImage = multer({
   fileFilter,
 });
 
-const deleteImage = async (publicId) => {
-  return cloudinary.uploader.destroy(publicId);
+const deleteImage = async (publicId, resourceType = 'image') => {
+  return cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
 };
 
 module.exports = {
@@ -131,4 +154,5 @@ module.exports = {
   uploadStoreImage,
   deleteImage,
   MAX_IMAGE_BYTES,
+  MAX_ALBUM_MEDIA_BYTES,
 };

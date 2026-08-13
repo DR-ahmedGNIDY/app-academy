@@ -8,7 +8,12 @@ const {
   markAllPlayerRead,
 } = require('../controllers/notification.controller');
 const { updateMyPhoto, deleteMyPhoto } = require('../controllers/playerProfile.controller');
-const { getPlayerAlbum } = require('../controllers/academyAlbum.controller');
+const {
+  getPlayerAlbum,
+  toggleLike,
+  addComment,
+  deleteComment,
+} = require('../controllers/academyAlbum.controller');
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage } = require('../config/cloudinary');
@@ -27,8 +32,33 @@ router.get('/dashboard', getPlayerDashboard);
 router.put('/photo', uploadPlayerImage.single('image'), updateMyPhoto);
 router.delete('/photo', deleteMyPhoto);
 
-// ── ألبوم الأكاديمية (قراءة فقط — أكاديمية اللاعب حصراً) ──
+// ── ألبوم الأكاديمية (قراءة + إعجاب/تعليق — أكاديمية اللاعب حصراً) ──
 router.get('/album', getPlayerAlbum);
+router.post(
+  '/album/:id/like',
+  [param('id').isMongoId().withMessage('معرّف العنصر غير صحيح')],
+  validate,
+  toggleLike
+);
+router.post(
+  '/album/:id/comments',
+  [
+    param('id').isMongoId().withMessage('معرّف العنصر غير صحيح'),
+    body('text').notEmpty().withMessage('نص التعليق مطلوب')
+      .isLength({ max: 500 }).withMessage('التعليق لا يمكن أن يتجاوز 500 حرف'),
+  ],
+  validate,
+  addComment
+);
+router.delete(
+  '/album/:id/comments/:commentId',
+  [
+    param('id').isMongoId().withMessage('معرّف العنصر غير صحيح'),
+    param('commentId').isMongoId().withMessage('معرّف التعليق غير صحيح'),
+  ],
+  validate,
+  deleteComment
+);
 
 // ── متجر الأكاديمية (قراءة + إنشاء طلب شراء — أكاديمية اللاعب حصراً) ──
 router.get('/store', getPlayerStore);
