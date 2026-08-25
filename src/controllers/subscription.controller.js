@@ -215,6 +215,17 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
     filter.endDate = { $gte: new Date() };
   } else if (req.query.status === 'expired') {
     filter.endDate = { $lt: new Date() };
+    // كل تجديد بينشئ سجل اشتراك جديد، فيفضل السجل القديم منتهي الصلاحية
+    // بتاريخه. لازم نستبعد أي لاعب عنده اشتراك نشط حاليًا (بعد التجديد)
+    // من قائمة "منتهي" — حالة اللاعب الحقيقية هي أحدث اشتراك، مش كل سجل
+    // تاريخي على حدة.
+    const activePlayerIds = await Subscription.distinct('playerId', {
+      academyId,
+      endDate: { $gte: new Date() },
+    });
+    if (activePlayerIds.length) {
+      filter.playerId = { $nin: activePlayerIds };
+    }
   }
 
   // Player filter
@@ -284,12 +295,16 @@ const getRevenueSummary = async (req, res, next) => {
           { $match: { type: 'RENEWAL' } },
           { $count: 'count' },
         ],
+        // نُجمّع لكل لاعب أحدث تاريخ انتهاء بين كل اشتراكاته، ونحكم على حالته
+        // بناءً عليه — عشان لاعب جدّد اشتراكه ميتحسبش "منتهي" بسبب سجل قديم.
         activeCount: [
-          { $match: { endDate: { $gte: now } } },
+          { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+          { $match: { maxEndDate: { $gte: now } } },
           { $count: 'count' },
         ],
         expiredCount: [
-          { $match: { endDate: { $lt: now } } },
+          { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+          { $match: { maxEndDate: { $lt: now } } },
           { $count: 'count' },
         ],
       },

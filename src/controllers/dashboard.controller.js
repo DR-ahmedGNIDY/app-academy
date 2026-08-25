@@ -4,6 +4,7 @@ const Subscription = require('../models/subscription.model');
 const Evaluation = require('../models/evaluation.model');
 const Activity = require('../models/activity.model');
 const Group = require('../models/group.model');
+const Expense = require('../models/expense.model');
 const { sendSuccess } = require('../utils/apiResponse');
 const AppError = require('../utils/AppError');
 
@@ -26,7 +27,10 @@ const getDashboardStats = async (req, res, next) => {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  const [playerStats, subscriptionStats, evaluationStats, groupStats] = await Promise.all([
+  const startOfMonthStr = startOfMonth.toISOString().slice(0, 10);
+  const endOfMonthStr = endOfMonth.toISOString().slice(0, 10);
+
+  const [playerStats, subscriptionStats, evaluationStats, groupStats, expenseStats] = await Promise.all([
     // 1. Players aggregation
     Player.aggregate([
       { $match: match },
@@ -54,12 +58,17 @@ const getDashboardStats = async (req, res, next) => {
       { $match: match },
       {
         $facet: {
+          // نُجمّع لكل لاعب أحدث تاريخ انتهاء بين كل اشتراكاته، ونحكم على
+          // حالته بناءً عليه — عشان لاعب جدّد اشتراكه ميتحسبش "منتهي" بسبب
+          // سجل قديم قبل التجديد.
           activeSubscriptions: [
-            { $match: { endDate: { $gte: now } } },
+            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $match: { maxEndDate: { $gte: now } } },
             { $count: 'count' },
           ],
           expiredSubscriptions: [
-            { $match: { endDate: { $lt: now } } },
+            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $match: { maxEndDate: { $lt: now } } },
             { $count: 'count' },
           ],
           totalRevenue: [
@@ -126,6 +135,22 @@ const getDashboardStats = async (req, res, next) => {
         },
       },
     ]),
+
+    // 5. Expenses $facet aggregation
+    Expense.aggregate([
+      { $match: match },
+      {
+        $facet: {
+          totalExpenses: [
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+          ],
+          currentMonthExpenses: [
+            { $match: { date: { $gte: startOfMonthStr, $lte: endOfMonthStr } } },
+            { $group: { _id: null, total: { $sum: '$amount' } } },
+          ],
+        },
+      },
+    ]),
   ]);
 
   const players = playerStats[0] || { totalPlayers: 0, activePlayers: 0, playersWithoutGroup: 0 };
@@ -158,6 +183,10 @@ const getDashboardStats = async (req, res, next) => {
 
   const evalStats = evaluationStats[0] || { averageEvaluationScore: 0 };
 
+  const expensesFacet = expenseStats[0] || {};
+  const totalExpensesDoc = extract(expensesFacet.totalExpenses);
+  const monthExpensesDoc = extract(expensesFacet.currentMonthExpenses);
+
   sendSuccess(res, {
     data: {
       totalPlayers: players.totalPlayers || 0,
@@ -175,6 +204,8 @@ const getDashboardStats = async (req, res, next) => {
       largestGroupSize: groups.largestGroupSize || 0,
       groupOccupancyRate,
       avgPlayersPerGroup,
+      totalExpenses: totalExpensesDoc.total || 0,
+      currentMonthExpenses: monthExpensesDoc.total || 0,
     },
   });
 };
@@ -368,8 +399,16 @@ const getSportStats = async (req, res, next) => {
       { $match: { 'player.sport': sport } },
       {
         $facet: {
-          active: [{ $match: { endDate: { $gte: now } } }, { $count: 'count' }],
-          expired: [{ $match: { endDate: { $lt: now } } }, { $count: 'count' }],
+          active: [
+            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $match: { maxEndDate: { $gte: now } } },
+            { $count: 'count' },
+          ],
+          expired: [
+            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $match: { maxEndDate: { $lt: now } } },
+            { $count: 'count' },
+          ],
           revenue: [{ $group: { _id: null, total: { $sum: '$amount' } } }],
         },
       },
