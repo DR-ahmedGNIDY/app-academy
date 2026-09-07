@@ -7,10 +7,32 @@ const { logActivity } = require('../utils/activityLogger');
 const ADMIN_PERMISSIONS = require('../constants/permissions');
 
 /**
+ * يتحقق أن مدير الأكاديمية يتعامل مع حساب داخل أكاديميته فقط، وأن الحساب
+ * المستهدف ليس حساب المدير العام. تُستخدم في تعديل/حذف/تفعيل/إيقاف/تغيير كلمة
+ * المرور — super_admin غير مقيَّد بها.
+ *
+ * @returns {AppError|null} خطأ جاهز للتمرير إلى next()، أو null إذا كان مسموحاً.
+ */
+const denyIfOutOfScope = (req, targetUser, { allowSelf = true } = {}) => {
+  if (req.user.role === 'super_admin') return null;
+
+  if (targetUser.academyId?.toString() !== req.user.academyId?.toString()) {
+    return new AppError('ليس لديك صلاحية للتعامل مع هذا المستخدم', 403);
+  }
+  if (targetUser.role === 'super_admin') {
+    return new AppError('لا يمكن التعامل مع حساب المدير العام', 403);
+  }
+  if (!allowSelf && targetUser._id.toString() === req.user._id.toString()) {
+    return new AppError('لا يمكنك تنفيذ هذا الإجراء على حسابك الشخصي', 400);
+  }
+  return null;
+};
+
+/**
  * POST /api/v1/users
  * super_admin — أي أكاديمية، دور academy_admin أو admin.
- * academy_admin — أكاديميته فقط، ودائماً دور admin (لا يقدر يُنشئ academy_admin آخر)،
- * مع صلاحيات دقيقة (permissions) اختيارية.
+ * academy_admin — أكاديميته فقط، ويختار بين academy_admin (صلاحيات كاملة مثله)
+ * و admin (مشرف بصلاحيات دقيقة اختيارية).
  */
 const createUser = async (req, res, next) => {
   const { name, email, password, academyId, role: requestedRole, permissions } = req.body;
@@ -34,12 +56,12 @@ const createUser = async (req, res, next) => {
     return next(new AppError('البريد الإلكتروني مستخدم بالفعل', 409));
   }
 
-  // academy_admin يُنشئ حسابات "admin" فقط (أبداً academy_admin)؛
-  // super_admin يقدر يختار academy_admin أو admin (كما كان، افتراضياً academy_admin).
+  // كلا الدورين (super_admin و academy_admin) يختار بين academy_admin و admin؛
+  // الفرق أن نطاق academy_admin محصور في أكاديميته (targetAcademyId أعلاه).
   const allowedRoles = ['academy_admin', 'admin'];
-  const newRole = isAcademyAdmin
-    ? 'admin'
-    : (allowedRoles.includes(requestedRole) ? requestedRole : 'academy_admin');
+  const newRole = allowedRoles.includes(requestedRole)
+    ? requestedRole
+    : 'academy_admin';
   const newPermissions = newRole === 'admin' && Array.isArray(permissions)
     ? permissions.filter((p) => ADMIN_PERMISSIONS.includes(p))
     : [];
@@ -72,7 +94,8 @@ const createUser = async (req, res, next) => {
 
 /**
  * PUT /api/v1/users/:id
- * super_admin only — updates name and/or email
+ * super_admin — أي مستخدم؛ academy_admin — مستخدمي أكاديميته فقط.
+ * يحدّث الاسم و/أو البريد الإلكتروني.
  */
 const updateUser = async (req, res, next) => {
   const { name, email } = req.body;
@@ -81,6 +104,9 @@ const updateUser = async (req, res, next) => {
   if (!user) {
     return next(new AppError('المستخدم غير موجود', 404));
   }
+
+  const scopeError = denyIfOutOfScope(req, user);
+  if (scopeError) return next(scopeError);
 
   // Prevent changing email to one already taken by another user
   if (email && email.toLowerCase().trim() !== user.email) {
@@ -110,7 +136,7 @@ const updateUser = async (req, res, next) => {
 
 /**
  * PATCH /api/v1/users/:id/reset-password
- * super_admin only — sets a new password for any user.
+ * super_admin — أي مستخدم؛ academy_admin — مستخدمي أكاديميته فقط.
  * Uses the same bcrypt hashing via the user model pre-save hook.
  */
 const resetUserPassword = async (req, res, next) => {
@@ -122,6 +148,9 @@ const resetUserPassword = async (req, res, next) => {
     return next(new AppError('المستخدم غير موجود', 404));
   }
 
+  const scopeError = denyIfOutOfScope(req, user);
+  if (scopeError) return next(scopeError);
+
   user.password = newPassword;
   await user.save();
 
@@ -132,7 +161,8 @@ const resetUserPassword = async (req, res, next) => {
 
 /**
  * DELETE /api/v1/users/:id
- * super_admin only — soft delete (isActive = false)
+ * super_admin — أي مستخدم؛ academy_admin — مستخدمي أكاديميته فقط (وليس حسابه هو).
+ * soft delete (isActive = false)
  */
 const deleteUser = async (req, res, next) => {
   const user = await User.findById(req.params.id);
@@ -144,6 +174,9 @@ const deleteUser = async (req, res, next) => {
   if (user.role === 'super_admin') {
     return next(new AppError('لا يمكن حذف حساب المدير العام', 403));
   }
+
+  const scopeError = denyIfOutOfScope(req, user, { allowSelf: false });
+  if (scopeError) return next(scopeError);
 
   if (!user.isActive) {
     return next(new AppError('المستخدم محذوف بالفعل', 400));
@@ -163,13 +196,17 @@ const deleteUser = async (req, res, next) => {
 
 /**
  * PATCH /api/v1/users/:id/activate
- * super_admin only — sets isActive = true
+ * super_admin — أي مستخدم؛ academy_admin — مستخدمي أكاديميته فقط.
+ * sets isActive = true
  */
 const activateUser = async (req, res, next) => {
   const user = await User.findById(req.params.id);
   if (!user) {
     return next(new AppError('المستخدم غير موجود', 404));
   }
+
+  const scopeError = denyIfOutOfScope(req, user);
+  if (scopeError) return next(scopeError);
 
   if (user.isActive) {
     return next(new AppError('المستخدم نشط بالفعل', 400));
@@ -189,7 +226,8 @@ const activateUser = async (req, res, next) => {
 
 /**
  * PATCH /api/v1/users/:id/deactivate
- * super_admin only — sets isActive = false
+ * super_admin — أي مستخدم؛ academy_admin — مستخدمي أكاديميته فقط (وليس حسابه هو).
+ * sets isActive = false
  */
 const deactivateUser = async (req, res, next) => {
   const user = await User.findById(req.params.id);
@@ -200,6 +238,9 @@ const deactivateUser = async (req, res, next) => {
   if (user.role === 'super_admin') {
     return next(new AppError('لا يمكن تعطيل حساب المدير العام', 403));
   }
+
+  const scopeError = denyIfOutOfScope(req, user, { allowSelf: false });
+  if (scopeError) return next(scopeError);
 
   if (!user.isActive) {
     return next(new AppError('المستخدم معطل بالفعل', 400));

@@ -86,22 +86,22 @@ router.post(
   createUser
 );
 
-// PUT /api/v1/users/:id — super_admin only
+// PUT /api/v1/users/:id — super_admin، أو academy_admin داخل نطاق أكاديميته
 router.put(
   '/:id',
   protect,
-  restrictTo('super_admin'),
+  restrictTo('super_admin', 'academy_admin'),
   mongoIdParam('id'),
   updateUserValidators,
   validate,
   updateUser
 );
 
-// PATCH /api/v1/users/:id/reset-password — super_admin only
+// PATCH /api/v1/users/:id/reset-password — super_admin، أو academy_admin داخل نطاق أكاديميته
 router.patch(
   '/:id/reset-password',
   protect,
-  restrictTo('super_admin'),
+  restrictTo('super_admin', 'academy_admin'),
   mongoIdParam('id'),
   body('newPassword')
     .notEmpty().withMessage('كلمة المرور الجديدة مطلوبة')
@@ -110,31 +110,31 @@ router.patch(
   resetUserPassword
 );
 
-// DELETE /api/v1/users/:id — super_admin only (soft delete)
+// DELETE /api/v1/users/:id — super_admin، أو academy_admin داخل نطاق أكاديميته (soft delete)
 router.delete(
   '/:id',
   protect,
-  restrictTo('super_admin'),
+  restrictTo('super_admin', 'academy_admin'),
   mongoIdParam('id'),
   validate,
   deleteUser
 );
 
-// PATCH /api/v1/users/:id/activate — super_admin only
+// PATCH /api/v1/users/:id/activate — super_admin، أو academy_admin داخل نطاق أكاديميته
 router.patch(
   '/:id/activate',
   protect,
-  restrictTo('super_admin'),
+  restrictTo('super_admin', 'academy_admin'),
   mongoIdParam('id'),
   validate,
   activateUser
 );
 
-// PATCH /api/v1/users/:id/deactivate — super_admin only
+// PATCH /api/v1/users/:id/deactivate — super_admin، أو academy_admin داخل نطاق أكاديميته
 router.patch(
   '/:id/deactivate',
   protect,
-  restrictTo('super_admin'),
+  restrictTo('super_admin', 'academy_admin'),
   mongoIdParam('id'),
   validate,
   deactivateUser
