@@ -31,6 +31,9 @@ const recordValidators = [
   body('localDate')
     .optional({ checkFalsy: true })
     .matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('صيغة التاريخ غير صحيحة'),
+  body('mode')
+    .optional({ checkFalsy: true })
+    .isIn(['pay_later', 'makeup', 'free']).withMessage('نوع الحضور غير صحيح'),
   body('localTime')
     .optional({ checkFalsy: true })
     .matches(/^\d{2}:\d{2}$/).withMessage('صيغة الوقت غير صحيحة'),

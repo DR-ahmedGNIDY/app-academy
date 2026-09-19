@@ -50,6 +50,26 @@ const attendanceSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // نوع الحضور (يحدّد لأي اشتراك يُحتسب):
+    //  regular   → حضور عادي، يُحتسب للاشتراك الذي يقع تاريخه داخل فترته.
+    //  pay_later → اشتراك منتهي + "حضور والدفع لاحقاً": يُحتسب للاشتراك الجديد (التجديد).
+    //  makeup    → "تعويض غياب سابق": يُحتسب للاشتراك السابق (subscriptionId).
+    //  free      → "حصة مجانية": لا يُحتسب في أي اشتراك.
+    // السجلات القديمة بلا kind: pay_later لو subscriptionExpiredAtCheckin، وإلا regular.
+    kind: {
+      type: String,
+      enum: {
+        values: ['regular', 'pay_later', 'makeup', 'free'],
+        message: 'نوع الحضور غير صحيح',
+      },
+      default: 'regular',
+    },
+    // الاشتراك الذي يُحتسب له حضور التعويض (makeup فقط).
+    subscriptionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Subscription',
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

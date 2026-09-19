@@ -44,10 +44,22 @@ const playerSummary = (p) => ({
   image_url: p.image_url,
 });
 
+// ملاحظة تُلحق بنص إشعار اللاعب حسب نوع الحضور.
+const KIND_NOTE = {
+  pay_later: ' (الدفع لاحقاً)',
+  makeup: ' (تعويض غياب سابق)',
+  free: ' (حصة مجانية)',
+};
+
 // ─── POST /attendance ─────────────────────────────────────────────────────────
 // مسح واحد = طلب واحد: بحث عن اللاعب + منع التكرار + إنشاء السجل + إرجاع بيانات اللاعب.
 const recordAttendance = async (req, res, next) => {
   const { code, playerId, localDate, localTime, allowExpired } = req.body;
+  // خيارات الاشتراك المنتهي: pay_later (حضور والدفع لاحقاً) | makeup (تعويض غياب سابق)
+  // | free (حصة مجانية). allowExpired=true القديم ≡ pay_later.
+  const EXPIRED_MODES = ['pay_later', 'makeup', 'free'];
+  let mode = EXPIRED_MODES.includes(req.body.mode) ? req.body.mode : null;
+  if (!mode && allowExpired === true) mode = 'pay_later';
   logger.info(`[ATTENDANCE] record request: code="${code ?? ''}" playerId="${playerId ?? ''}"`);
 
   // 1) العثور على اللاعب (بالكود من الـ QR أو بالمعرّف)
@@ -84,7 +96,7 @@ const recordAttendance = async (req, res, next) => {
   const latestSubscription = await latestSubscriptionOf(player._id);
   const subscriptionExpired = !latestSubscription || latestSubscription.endDate < new Date();
 
-  if (subscriptionExpired && allowExpired !== true) {
+  if (subscriptionExpired && !mode) {
     return sendSuccess(res, {
       data: {
         recorded: false,
@@ -98,6 +110,12 @@ const recordAttendance = async (req, res, next) => {
     });
   }
 
+  // الخيارات الخاصة تُقبل فقط لاشتراك منتهي؛ مع اشتراك نشط يكون الحضور عادياً.
+  const kind = subscriptionExpired ? mode : 'regular';
+  if (kind === 'makeup' && !latestSubscription) {
+    return next(new AppError('لا يوجد اشتراك سابق لتعويض الغياب فيه', 400));
+  }
+
   // 4) محاولة الإنشاء — الفهرس الفريد (playerId, date) هو حارس منع التكرار.
   try {
     const attendance = await Attendance.create({
@@ -107,10 +125,12 @@ const recordAttendance = async (req, res, next) => {
       date,
       time,
       status: 'present',
-      subscriptionExpiredAtCheckin: subscriptionExpired && allowExpired === true,
+      subscriptionExpiredAtCheckin: subscriptionExpired,
+      kind,
+      subscriptionId: kind === 'makeup' ? latestSubscription._id : null,
     });
 
-    logger.info(`Attendance recorded: ${player.playerCode} @ ${date} ${time}`);
+    logger.info(`Attendance recorded: ${player.playerCode} @ ${date} ${time} [${kind}]`);
     logActivity(req, {
       actionType: 'RECORD_ATTENDANCE', entityType: 'ATTENDANCE',
       entityId: player._id, entityName: player.fullName, academyId: player.academyId,
@@ -119,8 +139,8 @@ const recordAttendance = async (req, res, next) => {
     notify({
       recipientType: 'player', recipientId: player._id, academyId: player.academyId,
       type: 'ATTENDANCE_PRESENT', title: 'تم تسجيل حضورك',
-      body: `تم تسجيل حضورك بتاريخ ${date} الساعة ${time}`,
-      meta: { date, time },
+      body: `تم تسجيل حضورك بتاريخ ${date} الساعة ${time}${KIND_NOTE[kind] || ''}`,
+      meta: { date, time, kind },
     });
     return sendSuccess(res, {
       data: {
@@ -128,6 +148,7 @@ const recordAttendance = async (req, res, next) => {
         alreadyToday: false,
         player: playerSummary(player),
         attendance,
+        kind,
         stats: await subscriptionStats(player, latestSubscription),
       },
       message: 'تم تسجيل الحضور بنجاح',
@@ -236,6 +257,45 @@ const expectedInRange = (days, startStr, endStr) => {
 const latestSubscriptionOf = (playerId) =>
   Subscription.findOne({ playerId }).sort({ endDate: -1 });
 
+// نوع سجل الحضور — السجلات القديمة بلا kind تُشتق من subscriptionExpiredAtCheckin.
+const kindOf = (r) => r.kind || (r.subscriptionExpiredAtCheckin ? 'pay_later' : 'regular');
+
+// الحقول اللازمة لقاعدة الاحتساب.
+const COUNT_FIELDS = 'playerId date kind subscriptionId subscriptionExpiredAtCheckin';
+
+// هل يُحتسب سجل الحضور للاشتراك S؟
+// S = { id, start, end, prevEnd } (تواريخ 'YYYY-MM-DD'؛ prevEnd = نهاية الاشتراك السابق له أو null)
+//  regular   → تاريخه داخل [start, end]
+//  pay_later → سُجّل بعد انتهاء الاشتراك السابق ⇒ يُحتسب للاشتراك التالي (التجديد):
+//              تاريخه ≤ end وبعد prevEnd (أو ≥ start لو لا يوجد سابق)
+//  makeup    → subscriptionId === S.id (تعويض غياب في الاشتراك السابق)
+//  free      → لا يُحتسب أبداً
+const countsFor = (r, S) => {
+  switch (kindOf(r)) {
+    case 'free':
+      return false;
+    case 'makeup':
+      return !!r.subscriptionId && r.subscriptionId.toString() === S.id;
+    case 'pay_later':
+      return r.date <= S.end && (S.prevEnd ? r.date > S.prevEnd : r.date >= S.start);
+    default:
+      return r.date >= S.start && r.date <= S.end;
+  }
+};
+
+// أقدم تاريخ قد يحتاجه countsFor لاشتراك S (لتضييق استعلام السجلات).
+const lowerBoundOf = (S) => (S.prevEnd && S.prevEnd < S.start ? S.prevEnd : S.start);
+
+// نهاية الاشتراك السابق للاشتراك sub (أحدث endDate قبل endDate الخاص به).
+const prevEndOf = async (sub) => {
+  const prev = await Subscription.findOne({
+    playerId: sub.playerId,
+    _id: { $ne: sub._id },
+    endDate: { $lt: sub.endDate },
+  }).sort({ endDate: -1 }).select('endDate');
+  return prev ? dateToStr(prev.endDate) : null;
+};
+
 // إحصائيات حضور اللاعب داخل اشتراك معيّن.
 // نشط  → الحضور من بداية الاشتراك، والغياب حتى اليوم.
 // منتهي → الحضور والغياب على كامل فترة الاشتراك السابق.
@@ -249,10 +309,15 @@ const subscriptionStats = async (player, sub) => {
   const endStr = dateToStr(sub.endDate);
   const countUntil = active && today < endStr ? today : endStr;
   const days = player.attendanceDays;
-  const present = await Attendance.countDocuments({
+  const S = { id: sub._id.toString(), start: startStr, end: endStr, prevEnd: await prevEndOf(sub) };
+  const records = await Attendance.find({
     playerId: player._id,
-    date: { $gte: startStr, $lte: endStr },
-  });
+    $or: [
+      { date: { $gte: lowerBoundOf(S), $lte: endStr } },
+      { subscriptionId: sub._id },
+    ],
+  }).select(COUNT_FIELDS).lean();
+  const present = records.filter((r) => countsFor(r, S)).length;
   const expected = expectedInRange(days, startStr, countUntil);
   return {
     status: active ? 'active' : 'expired',
@@ -312,24 +377,48 @@ const getAttendanceReport = async (req, res, next) => {
     .sort({ fullName: 1 })
     .lean();
 
-  // (ج) الحضور من أقدم بداية اشتراك نشط — ثم عدّ كل لاعب داخل فترته في الذاكرة.
-  let minStart = null;
-  for (const p of players) {
-    const s = activeSubMap[p._id.toString()];
-    if (!s) continue;
-    const st = dateToStr(new Date(s.startDate));
-    if (!minStart || st < minStart) minStart = st;
+  // (ج) نهاية الاشتراك السابق لكل لاعب نشط (لاحتساب "حضور والدفع لاحقاً" للتجديد).
+  const activeIds = players
+    .filter((p) => activeSubMap[p._id.toString()])
+    .map((p) => p._id);
+  const allSubs = activeIds.length
+    ? await Subscription.find({ academyId, playerId: { $in: activeIds } })
+      .select('playerId endDate').lean()
+    : [];
+  const subsByPlayer = {};
+  for (const s of allSubs) {
+    const key = s.playerId.toString();
+    const active = activeSubMap[key];
+    if (s._id.toString() === active._id.toString() || s.endDate >= active.endDate) continue;
+    if (!subsByPlayer[key] || s.endDate > subsByPlayer[key]) subsByPlayer[key] = s.endDate;
   }
-  const datesByPlayer = {};
+  const periodOf = {};
+  let minStart = null;
+  for (const id of activeIds) {
+    const key = id.toString();
+    const s = activeSubMap[key];
+    const S = {
+      id: s._id.toString(),
+      start: dateToStr(new Date(s.startDate)),
+      end: dateToStr(new Date(s.endDate)),
+      prevEnd: subsByPlayer[key] ? dateToStr(new Date(subsByPlayer[key])) : null,
+    };
+    periodOf[key] = S;
+    const lb = lowerBoundOf(S);
+    if (!minStart || lb < minStart) minStart = lb;
+  }
+
+  // (د) سجلات الحضور من أقدم حدّ — ثم عدّ كل لاعب حسب قاعدة countsFor في الذاكرة.
+  const recordsByPlayer = {};
   if (minStart) {
     const records = await Attendance.find({
       academyId,
-      playerId: { $in: players.map((p) => p._id) },
+      playerId: { $in: activeIds },
       date: { $gte: minStart },
-    }).select('playerId date').lean();
+    }).select(COUNT_FIELDS).lean();
     for (const r of records) {
       const key = r.playerId.toString();
-      (datesByPlayer[key] = datesByPlayer[key] || []).push(r.date);
+      (recordsByPlayer[key] = recordsByPlayer[key] || []).push(r);
     }
   }
 
@@ -362,11 +451,11 @@ const getAttendanceReport = async (req, res, next) => {
         rate: 0,
       };
     }
-    const startStr = dateToStr(new Date(sub.startDate));
-    const endStr = dateToStr(new Date(sub.endDate));
+    const S = periodOf[id];
+    const startStr = S.start;
+    const endStr = S.end;
     const countUntil = today < endStr ? today : endStr;
-    const present = (datesByPlayer[id] || [])
-      .filter((d) => d >= startStr && d <= endStr).length;
+    const present = (recordsByPlayer[id] || []).filter((r) => countsFor(r, S)).length;
     const expected = expectedInRange(days, startStr, countUntil);
     const expectedTotal = expectedInRange(days, startStr, endStr);
     const absent = Math.max(expected - present, 0);
