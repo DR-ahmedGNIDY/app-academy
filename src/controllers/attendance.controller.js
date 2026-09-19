@@ -19,6 +19,10 @@ const normalizeCode = (raw) => {
   if (!raw) return '';
   let v = String(raw).trim();
   v = v.replace(/^PLAYER:/i, '').trim();
+  // إدخال يدوي بالرقم فقط ('1' أو '0001') → 'Y-0001' (نفس صيغة generatePlayerCode).
+  if (/^\d+$/.test(v)) return 'Y-' + v.padStart(4, '0');
+  // 'y-0001' → 'Y-0001'
+  if (/^y-\d+$/i.test(v)) return v.toUpperCase();
   return v;
 };
 
