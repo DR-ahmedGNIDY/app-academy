@@ -4,9 +4,11 @@ const {
   recordAttendance,
   getAttendance,
   getAttendanceReport,
+  searchAttendancePlayers,
+  getPlayerAttendanceSummary,
   deleteAttendance,
 } = require('../controllers/attendance.controller');
-const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
+const { protect, restrictTo } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
@@ -37,7 +39,18 @@ const recordValidators = [
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 // GET /attendance/report   ← MUST be before any '/:id' style route
-router.get('/report', requirePermission('view_reports'), getAttendanceReport);
+// بلا بوابة صلاحيات عمداً: التقرير تجميع إحصائي لبيانات GET /attendance التي
+// يقرؤها نفس المستخدم بلا قيد، فالبوابة كانت تمنع الراحة لا الوصول. وكل من
+// يرى صفحة اللاعبين (كل حسابات admin) يجب أن يرى سجل الحضور وتقريره.
+// عزل الأكاديمية يبقى مضموناً داخل getAttendanceReport (super_admin وحده
+// يمرّر academyId؛ غيره مقيَّد بأكاديميته).
+router.get('/report', getAttendanceReport);
+
+// GET /attendance/players?search=  ← بحث لاعب لسجل الحضور
+router.get('/players', searchAttendancePlayers);
+
+// GET /attendance/player/:id/summary  ← حضور اللاعب في اشتراكه الأخير
+router.get('/player/:id/summary', getPlayerAttendanceSummary);
 
 // GET /attendance
 router.get('/', getAttendance);

@@ -16,6 +16,9 @@ const buildPlayerPayload = (account, academyName) => {
     fullName: player?.fullName || '',
     playerCode: player?.playerCode || '',
     image_url: player?.image_url || null,
+    // تاريخ الميلاد — يستخدمه التطبيق لتفعيل حماية إعلانات الأطفال (COPPA)
+    // تلقائياً لمن هم دون 13 سنة. الحقل إجباري في موديل اللاعب.
+    birthDate: player?.birthDate || null,
     academy_id: account.academyId?.toString() || null,
     academy_name: academyName || '',
   };

@@ -7,13 +7,38 @@ const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 
 const TRIAL_DAYS = 7;
+
+// يطبّع قائمة الرياضات القادمة من فورم التسجيل (multipart):
+// sports = نص JSON لقائمة، أو قائمة، أو نص مفصول بفواصل. fallback: sport المفردة.
+// يزيل المسافات والفراغات والتكرار مع الحفاظ على الترتيب.
+const parseSports = (sports, sport) => {
+  let list = [];
+  if (Array.isArray(sports)) {
+    list = sports;
+  } else if (typeof sports === 'string' && sports.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(sports);
+      list = Array.isArray(parsed) ? parsed : [String(parsed)];
+    } catch (_) {
+      list = sports.split(',');
+    }
+  }
+  if (list.length === 0 && sport) list = [sport];
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    const s = String(raw ?? '').trim();
+    if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+  }
+  return out;
+};
 const TRIAL_MAX_PLAYERS = 7;
 
 // POST /api/v1/register-academy  (عام) — تسجيل ذاتي لأكاديمية جديدة.
 // ينشئ تلقائياً: Academy + User(academy_admin) + AcademySubscription(trial).
 // يسجّل الدخول مباشرة (يعيد token) لتجربة سلسة.
 const registerAcademy = async (req, res, next) => {
-  const { academyName, adminName, phone, email, city, sport, password, currency } =
+  const { academyName, adminName, phone, email, city, sport, sports, password, currency } =
     req.body;
 
   // منع تكرار البريد قبل أي إنشاء.
@@ -33,7 +58,7 @@ const registerAcademy = async (req, res, next) => {
       address: city, // المدينة تُخزَّن كعنوان (النموذج الحالي يتطلب address)
       // العملة مشتقّة من الدولة المختارة في الفرونت؛ الافتراضي EGP لو غابت.
       currency: currency || 'EGP',
-      sports: [sport],
+      sports: parseSports(sports, sport),
       logo_url: req.file ? req.file.path : null,
       logo_public_id: req.file ? req.file.filename : null,
     });
@@ -103,4 +128,4 @@ const registerAcademy = async (req, res, next) => {
   });
 };
 
-module.exports = { registerAcademy };
+module.exports = { registerAcademy, parseSports };

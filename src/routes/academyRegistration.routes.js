@@ -1,7 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const rateLimit = require('express-rate-limit');
-const { registerAcademy } = require('../controllers/academyRegistration.controller');
+const { registerAcademy, parseSports } = require('../controllers/academyRegistration.controller');
 const validate = require('../middleware/validate');
 const { uploadAcademyLogo } = require('../config/cloudinary');
 
@@ -31,9 +31,14 @@ const registerValidators = [
   body('city')
     .notEmpty().withMessage('المدينة مطلوبة')
     .isLength({ min: 2, max: 300 }).withMessage('المدينة غير صحيحة'),
-  body('sport')
-    .notEmpty().withMessage('نوع الرياضة مطلوب')
-    .isLength({ min: 2, max: 60 }).withMessage('نوع الرياضة غير صحيح'),
+  // الرياضات: sports (قائمة JSON — متعددة/مخصّصة) أو sport (رياضة واحدة — نسخ قديمة).
+  body('sports').custom((value, { req }) => {
+    const list = parseSports(value, req.body.sport);
+    if (list.length === 0) throw new Error('يجب اختيار رياضة واحدة على الأقل');
+    if (list.length > 20) throw new Error('عدد الرياضات كبير جداً');
+    if (list.some((s) => s.length < 2 || s.length > 60)) throw new Error('اسم الرياضة غير صحيح');
+    return true;
+  }),
   body('password')
     .isLength({ min: 8 }).withMessage('كلمة المرور يجب أن تكون 8 أحرف على الأقل'),
   // العملة اختيارية (تُشتق من الدولة في الفرونت)؛ إن أُرسلت نتحقق من صحتها.

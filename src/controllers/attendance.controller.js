@@ -7,6 +7,7 @@ const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { notify } = require('../utils/notificationService');
+const escapeRegex = require('../utils/escapeRegex');
 
 // أسماء أيام الأسبوع العربية مرتبطة بـ Date.getDay() (0 = الأحد ... 6 = السبت)
 // مطابقة تماماً للقيم المخزّنة في player.attendanceDays و SportsConstants.weekDays.
@@ -76,8 +77,7 @@ const recordAttendance = async (req, res, next) => {
   const time = (localTime && /^\d{2}:\d{2}$/.test(localTime)) ? localTime : serverTimeStr();
 
   // 3) فحص حالة الاشتراك — آخر اشتراك للاعب (الأحدث تاريخ انتهاء).
-  const latestSubscription = await Subscription.findOne({ playerId: player._id })
-    .sort({ endDate: -1 });
+  const latestSubscription = await latestSubscriptionOf(player._id);
   const subscriptionExpired = !latestSubscription || latestSubscription.endDate < new Date();
 
   if (subscriptionExpired && allowExpired !== true) {
@@ -87,6 +87,8 @@ const recordAttendance = async (req, res, next) => {
         alreadyToday: false,
         subscriptionExpired: true,
         player: playerSummary(player),
+        // حضور/غياب اللاعب في اشتراكه السابق (آخر اشتراك كان نشطاً).
+        stats: await subscriptionStats(player, latestSubscription),
       },
       message: 'اشتراك اللاعب منتهي',
     });
@@ -122,6 +124,7 @@ const recordAttendance = async (req, res, next) => {
         alreadyToday: false,
         player: playerSummary(player),
         attendance,
+        stats: await subscriptionStats(player, latestSubscription),
       },
       message: 'تم تسجيل الحضور بنجاح',
       statusCode: 201,
@@ -134,6 +137,7 @@ const recordAttendance = async (req, res, next) => {
           recorded: false,
           alreadyToday: true,
           player: playerSummary(player),
+          stats: await subscriptionStats(player, latestSubscription),
         },
         message: 'تم تسجيل حضور هذا اللاعب مسبقاً اليوم',
       });
@@ -213,82 +217,170 @@ const weekdayCountsInRange = (startStr, endStr) => {
   return counts;
 };
 
-// ─── GET /attendance/report ───────────────────────────────────────────────────
-// تقرير الحضور/الغياب — استعلامان فقط (لاعبون + تجميع الحضور) ثم حساب في الذاكرة.
-const getAttendanceReport = async (req, res, next) => {
-  // نطاق الأكاديمية — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
-  let academyId;
-  if (req.user.role === 'super_admin') {
-    if (!req.query.academyId) {
-      return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-    }
-    academyId = req.query.academyId;
-  } else {
-    academyId = req.user.academyId;
-  }
+// Date → YYYY-MM-DD بتوقيت السيرفر المحلي (نفس صيغة Attendance.date).
+const dateToStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
-  // الفترة — افتراضياً الشهر الحالي إن لم تُرسل
+// عدد الأيام المتوقعة للاعب ضمن [start, end] حسب أيام حضوره (attendanceDays).
+const expectedInRange = (days, startStr, endStr) => {
+  if (!Array.isArray(days) || days.length === 0 || startStr > endStr) return 0;
+  const counts = weekdayCountsInRange(startStr, endStr);
+  return days.reduce((sum, d) => sum + (counts[d] || 0), 0);
+};
+
+// آخر اشتراك للاعب (الأحدث تاريخ انتهاء). "نشط" ⇔ endDate >= الآن.
+// لو منتهي فهو "الاشتراك السابق" = آخر اشتراك كان نشطاً للاعب.
+const latestSubscriptionOf = (playerId) =>
+  Subscription.findOne({ playerId }).sort({ endDate: -1 });
+
+// إحصائيات حضور اللاعب داخل اشتراك معيّن.
+// نشط  → الحضور من بداية الاشتراك، والغياب حتى اليوم.
+// منتهي → الحضور والغياب على كامل فترة الاشتراك السابق.
+const subscriptionStats = async (player, sub) => {
+  if (!sub) {
+    return { status: 'none', subscription: null, present: 0, absent: 0, expected: 0, expectedTotal: 0 };
+  }
   const today = serverDateStr();
-  const firstOfMonth = today.slice(0, 8) + '01';
-  const startDate = (req.query.startDate && /^\d{4}-\d{2}-\d{2}$/.test(req.query.startDate))
-    ? req.query.startDate : firstOfMonth;
-  const endDate = (req.query.endDate && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endDate))
-    ? req.query.endDate : today;
+  const active = sub.endDate >= new Date();
+  const startStr = dateToStr(sub.startDate);
+  const endStr = dateToStr(sub.endDate);
+  const countUntil = active && today < endStr ? today : endStr;
+  const days = player.attendanceDays;
+  const present = await Attendance.countDocuments({
+    playerId: player._id,
+    date: { $gte: startStr, $lte: endStr },
+  });
+  const expected = expectedInRange(days, startStr, countUntil);
+  return {
+    status: active ? 'active' : 'expired',
+    subscription: { id: sub._id.toString(), type: sub.type, startDate: startStr, endDate: endStr },
+    present,
+    absent: Math.max(expected - present, 0),
+    expected,
+    expectedTotal: expectedInRange(days, startStr, endStr),
+  };
+};
+
+// نطاق الأكاديمية — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
+const resolveAcademyId = (req) => {
+  if (req.user.role === 'super_admin') return req.query.academyId || null;
+  return req.user.academyId;
+};
+
+// ─── GET /attendance/report ───────────────────────────────────────────────────
+// تقرير الحضور/الغياب — كل لاعب يُحسب على فترة اشتراكه النشط (بدايته → نهايته)
+// وليس على الشهر. اللاعب المنتهي اشتراكه يُعرض بحالة "منتهي" فقط بلا أرقام.
+// 3 استعلامات: اشتراكات نشطة + لاعبون + سجلات الحضور (playerId/date فقط).
+const getAttendanceReport = async (req, res, next) => {
+  const academyId = resolveAcademyId(req);
+  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
 
   const sport = (req.query.sport && req.query.sport.trim().length > 0)
     ? req.query.sport.trim() : null;
 
-  // نطاق الشهر الحالي الكامل (من أول يوم لآخر يوم فيه) — مستقل عن startDate/endDate
-  // المطلوبين، يُستخدم لحساب "expectedThisMonth" (إجمالي الدوائر الشهرية في الواجهة)
-  // بحيث لا يتقلّص العدد كلما تقدّم الشهر.
-  const [tYear, tMonth] = today.split('-').map(Number);
-  const lastDayOfMonth = new Date(tYear, tMonth, 0).getDate();
-  const endOfMonth = `${today.slice(0, 8)}${String(lastDayOfMonth).padStart(2, '0')}`;
-  const monthWeekdayCounts = weekdayCountsInRange(firstOfMonth, endOfMonth);
+  // 'active' = اللاعبون ذوو الاشتراك النشط الآن، 'all' = كل اللاعبين النشطين.
+  const subscriptionFilter = req.query.subscription === 'active' ? 'active' : 'all';
 
-  // (أ) لاعبو الأكاديمية النشطون
+  const now = new Date();
+  const today = serverDateStr();
+
+  // (أ) الاشتراك النشط لكل لاعب = أحدث اشتراك (أبعد endDate) لم ينتهِ بعد.
+  // نفس تعريف شاشة المسح (latestSubscriptionOf): آخر اشتراك endDate >= الآن.
+  const activeSubs = await Subscription.find({ academyId, endDate: { $gte: now } })
+    .select('playerId type startDate endDate')
+    .sort({ endDate: -1 })
+    .lean();
+  const activeSubMap = {};
+  for (const s of activeSubs) {
+    const key = s.playerId.toString();
+    if (!activeSubMap[key]) activeSubMap[key] = s;
+  }
+
+  // (ب) اللاعبون
   const playerFilter = { academyId, isActive: true };
   if (sport) playerFilter.sport = sport;
+  if (subscriptionFilter === 'active') {
+    playerFilter._id = {
+      $in: Object.keys(activeSubMap).map((id) => new mongoose.Types.ObjectId(id)),
+    };
+  }
   const players = await Player.find(playerFilter)
-    .select('fullName playerCode sport attendanceDays');
+    .select('fullName playerCode sport attendanceDays')
+    .sort({ fullName: 1 })
+    .lean();
 
-  // (ب) تجميع الحضور خلال الفترة لكل لاعب
-  const matchStage = {
-    academyId: new mongoose.Types.ObjectId(String(academyId)),
-    date: { $gte: startDate, $lte: endDate },
-  };
-  if (sport) matchStage.sport = sport;
-  const agg = await Attendance.aggregate([
-    { $match: matchStage },
-    { $group: { _id: '$playerId', present: { $sum: 1 } } },
-  ]);
-  const presentMap = {};
-  for (const row of agg) presentMap[row._id.toString()] = row.present;
+  // (ج) الحضور من أقدم بداية اشتراك نشط — ثم عدّ كل لاعب داخل فترته في الذاكرة.
+  let minStart = null;
+  for (const p of players) {
+    const s = activeSubMap[p._id.toString()];
+    if (!s) continue;
+    const st = dateToStr(new Date(s.startDate));
+    if (!minStart || st < minStart) minStart = st;
+  }
+  const datesByPlayer = {};
+  if (minStart) {
+    const records = await Attendance.find({
+      academyId,
+      playerId: { $in: players.map((p) => p._id) },
+      date: { $gte: minStart },
+    }).select('playerId date').lean();
+    for (const r of records) {
+      const key = r.playerId.toString();
+      (datesByPlayer[key] = datesByPlayer[key] || []).push(r.date);
+    }
+  }
 
-  // حساب المتوقع/الغياب/نسبة الالتزام في الذاكرة
-  const weekdayCounts = weekdayCountsInRange(startDate, endDate);
   let totalPresent = 0;
   let totalAbsent = 0;
+  let activeCount = 0;
 
   const rows = players.map((p) => {
+    const id = p._id.toString();
     const days = Array.isArray(p.attendanceDays) ? p.attendanceDays : [];
-    const expected = days.reduce((sum, d) => sum + (weekdayCounts[d] || 0), 0);
-    const expectedThisMonth = days.reduce((sum, d) => sum + (monthWeekdayCounts[d] || 0), 0);
-    const present = presentMap[p._id.toString()] || 0;
-    const absent = Math.max(expected - present, 0);
-    const rate = expected > 0
-      ? Math.round((present / expected) * 100)
-      : (present > 0 ? 100 : 0);
-    totalPresent += present;
-    totalAbsent += absent;
-    return {
-      playerId: p._id.toString(),
+    const base = {
+      playerId: id,
       playerCode: p.playerCode,
       fullName: p.fullName,
       sport: p.sport,
       attendanceDays: days,
+    };
+    const sub = activeSubMap[id];
+    if (!sub) {
+      return {
+        ...base,
+        subscriptionStatus: 'expired',
+        subscriptionStart: null,
+        subscriptionEnd: null,
+        expected: 0,
+        expectedTotal: 0,
+        expectedThisMonth: 0,
+        present: 0,
+        absent: 0,
+        rate: 0,
+      };
+    }
+    const startStr = dateToStr(new Date(sub.startDate));
+    const endStr = dateToStr(new Date(sub.endDate));
+    const countUntil = today < endStr ? today : endStr;
+    const present = (datesByPlayer[id] || [])
+      .filter((d) => d >= startStr && d <= endStr).length;
+    const expected = expectedInRange(days, startStr, countUntil);
+    const expectedTotal = expectedInRange(days, startStr, endStr);
+    const absent = Math.max(expected - present, 0);
+    const rate = expected > 0
+      ? Math.min(100, Math.round((present / expected) * 100))
+      : (present > 0 ? 100 : 0);
+    totalPresent += present;
+    totalAbsent += absent;
+    activeCount += 1;
+    return {
+      ...base,
+      subscriptionStatus: 'active',
+      subscriptionStart: startStr,
+      subscriptionEnd: endStr,
       expected,
-      expectedThisMonth,
+      expectedTotal,
+      // توافق رجعي مع نسخ الواجهة القديمة (الدوائر).
+      expectedThisMonth: expectedTotal,
       present,
       absent,
       rate,
@@ -297,15 +389,64 @@ const getAttendanceReport = async (req, res, next) => {
 
   return sendSuccess(res, {
     data: {
-      startDate,
-      endDate,
+      basis: 'subscription',
+      startDate: minStart || today,
+      endDate: today,
       sport,
+      subscription: subscriptionFilter,
       playersCount: rows.length,
+      activeCount,
       totalPresent,
       totalAbsent,
       rows,
     },
     message: 'تم جلب تقرير الحضور بنجاح',
+  });
+};
+
+// ─── GET /attendance/players?search= ───────────────────────────────────────────
+// بحث لاعبي الأكاديمية بالاسم/الكود لسجل الحضور (كارت لكل لاعب).
+const searchAttendancePlayers = async (req, res, next) => {
+  const academyId = resolveAcademyId(req);
+  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+  const q = String(req.query.search || '').trim();
+  if (!q) return sendSuccess(res, { data: [], message: 'لا توجد نتائج' });
+
+  const rx = new RegExp(escapeRegex(q), 'i');
+  const filter = { academyId, $or: [{ fullName: rx }, { playerCode: rx }] };
+  if (req.query.sport && req.query.sport.trim()) filter.sport = req.query.sport.trim();
+  const players = await Player.find(filter)
+    .select('fullName playerCode sport image_url')
+    .sort({ fullName: 1 })
+    .limit(30);
+  return sendSuccess(res, {
+    data: players.map(playerSummary),
+    message: 'تم جلب اللاعبين بنجاح',
+  });
+};
+
+// ─── GET /attendance/player/:id/summary ────────────────────────────────────────
+// ملخص حضور اللاعب في اشتراكه الأخير: نشط → منذ بدايته، منتهي → الاشتراك السابق.
+const getPlayerAttendanceSummary = async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new AppError('معرّف اللاعب غير صحيح', 400));
+  }
+  const player = await Player.findById(req.params.id)
+    .select('fullName playerCode sport image_url attendanceDays academyId');
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  if (
+    req.user.role !== 'super_admin' &&
+    player.academyId.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية لعرض هذا اللاعب', 403));
+  }
+  const sub = await latestSubscriptionOf(player._id);
+  return sendSuccess(res, {
+    data: {
+      player: playerSummary(player),
+      stats: await subscriptionStats(player, sub),
+    },
+    message: 'تم جلب ملخص حضور اللاعب بنجاح',
   });
 };
 
@@ -334,5 +475,7 @@ module.exports = {
   recordAttendance,
   getAttendance,
   getAttendanceReport,
+  searchAttendancePlayers,
+  getPlayerAttendanceSummary,
   deleteAttendance,
 };

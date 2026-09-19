@@ -3,6 +3,7 @@ const Attendance = require('../models/attendance.model');
 const Evaluation = require('../models/evaluation.model');
 const Notification = require('../models/notification.model');
 const Conversation = require('../models/conversation.model');
+const Academy = require('../models/academy.model');
 const { sendSuccess } = require('../utils/apiResponse');
 
 const daysBetween = (future) => {
@@ -17,7 +18,14 @@ const getPlayerDashboard = async (req, res, next) => {
   const playerId = player._id;
   const academyId = player.academyId;
 
-  const [latestSub, attendanceRecords, evaluations, unreadNotifications, conversation] =
+  const [
+    latestSub,
+    attendanceRecords,
+    evaluations,
+    unreadNotifications,
+    conversation,
+    academy,
+  ] =
     await Promise.all([
       Subscription.findOne({ playerId }).sort({ endDate: -1 }),
       Attendance.find({ playerId }).sort({ timestamp: -1 }).limit(60),
@@ -28,6 +36,12 @@ const getPlayerDashboard = async (req, res, next) => {
         isRead: false,
       }),
       Conversation.findOne({ academyId, playerId }),
+      // روابط التواصل الاجتماعي للأكاديمية. كانت الواجهة تجلبها من
+      // GET /academies/:id وهو مسار محمي بـ protect (مدراء فقط) — فيردّ 401
+      // لتوكن اللاعب. نعيدها هنا ضمن حمولة اللاعب بدل ذلك.
+      Academy.findById(academyId).select(
+        'name websiteUrl facebookUrl tiktokUrl instagramUrl'
+      ),
     ]);
 
   const subscription = latestSub
@@ -51,6 +65,14 @@ const getPlayerDashboard = async (req, res, next) => {
   return sendSuccess(res, {
     message: 'تم جلب لوحة اللاعب بنجاح',
     data: {
+      // سياق الأكاديمية (روابط التواصل) — إضافة بحتة، لا تغيّر أي حقل قائم.
+      academy: {
+        name: academy?.name || '',
+        websiteUrl: academy?.websiteUrl || '',
+        facebookUrl: academy?.facebookUrl || '',
+        tiktokUrl: academy?.tiktokUrl || '',
+        instagramUrl: academy?.instagramUrl || '',
+      },
       player: {
         _id: playerId.toString(),
         fullName: player.fullName,
