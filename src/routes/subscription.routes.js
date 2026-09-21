@@ -7,6 +7,7 @@ const {
   getSubscriptionById,
   getSubscriptionsByPlayer,
   getSubscriptionsByAcademy,
+  getAcademyPlayerStatusMap,
   getRevenueSummary,
 } = require('../controllers/subscription.controller');
 const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
@@ -66,6 +67,9 @@ const notesValidators = [
 
 // GET  /subscriptions/player/:playerId
 router.get('/player/:playerId', getSubscriptionsByPlayer);
+
+// GET  /subscriptions/academy/:academyId/player-status — خريطة playerId → active/expired
+router.get('/academy/:academyId/player-status', restrictTo('super_admin', 'academy_admin'), getAcademyPlayerStatusMap);
 
 // GET  /subscriptions/academy/:academyId/revenue — admin needs view_dashboard_revenue permission
 router.get('/academy/:academyId/revenue', requirePermission('view_dashboard_revenue'), getRevenueSummary);

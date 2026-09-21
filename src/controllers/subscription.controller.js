@@ -251,6 +251,46 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
   });
 };
 
+// ─── GET /academy/:academyId/player-status ───────────────────────────────────
+/**
+ * خريطة حالة الاشتراك لكل لاعب: { "<playerId>": "active" | "expired" }.
+ *
+ * صفحة اللاعبين كانت بتجيب سجلات الاشتراكات نفسها (مع pagination) وتحسب منها
+ * الحالة، فاللاعبين اللي سجلاتهم برّه الصفحة الأولى كانوا بيظهروا "جديد" غلط.
+ * كل تجديد بينشئ سجل جديد، فعدد السجلات بيكبر مع الوقت وأي حد ثابت بينكسر.
+ *
+ * هنا بنحسب الحالة على السيرفر بـ aggregation واحدة — أحدث endDate لكل لاعب —
+ * وهي نفس القاعدة اللي بتستخدمها الداشبورد، فالأرقام بتتطابق. الرد سطر واحد
+ * لكل لاعب بدل السجل الكامل، ومفيش pagination أصلاً.
+ */
+const getAcademyPlayerStatusMap = async (req, res, next) => {
+  const academyId = resolveAcademyId(req, req.params.academyId);
+  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+  if (req.user.role !== 'super_admin' && req.params.academyId &&
+      req.params.academyId !== academyId) {
+    return next(new AppError('ليس لديك صلاحية للوصول إلى اشتراكات هذه الأكاديمية', 403));
+  }
+
+  const mongoose = require('mongoose');
+  const now = new Date();
+
+  const rows = await Subscription.aggregate([
+    { $match: { academyId: new mongoose.Types.ObjectId(academyId) } },
+    { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+  ]);
+
+  const statusMap = {};
+  for (const row of rows) {
+    if (!row._id) continue;
+    statusMap[row._id.toString()] = row.maxEndDate >= now ? 'active' : 'expired';
+  }
+
+  return sendSuccess(res, {
+    data: statusMap,
+    message: 'تم جلب حالات اشتراكات اللاعبين بنجاح',
+  });
+};
+
 // ─── GET /academy/:academyId/revenue ─────────────────────────────────────────
 const getRevenueSummary = async (req, res, next) => {
   // Resolve academy
@@ -333,5 +373,6 @@ module.exports = {
   getSubscriptionById,
   getSubscriptionsByPlayer,
   getSubscriptionsByAcademy,
+  getAcademyPlayerStatusMap,
   getRevenueSummary,
 };
