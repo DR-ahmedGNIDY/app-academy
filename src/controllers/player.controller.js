@@ -16,6 +16,13 @@ class PortalDisabledSkip extends Error {}
 
 // Normalize an array field coming from multipart/form-data.
 // Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
+// عدد الحصص (multipart نصّي): undefined = لم يُرسل، '' أو 0 = بلا حدّ (null).
+const parseSessionsLimit = (raw) => {
+  if (raw === undefined) return undefined;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 365) : null;
+};
+
 const parseArrayField = (raw) => {
   if (raw === undefined || raw === null) return undefined;
   if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
@@ -251,6 +258,8 @@ const createPlayer = async (req, res, next) => {
   // ── Attendance days ───────────────────────────────────────────────────────
   const attendanceDays = parseArrayField(req.body.attendanceDays);
   if (attendanceDays !== undefined) playerData.attendanceDays = attendanceDays;
+  const sessionsLimit = parseSessionsLimit(req.body.sessionsLimit);
+  if (sessionsLimit !== undefined) playerData.sessionsLimit = sessionsLimit;
 
   if (req.file) {
     playerData.image_url = req.file.path;
@@ -345,6 +354,8 @@ const updatePlayer = async (req, res, next) => {
   // Attendance days update
   const attendanceDays = parseArrayField(req.body.attendanceDays);
   if (attendanceDays !== undefined) player.attendanceDays = attendanceDays;
+  const sessionsLimit = parseSessionsLimit(req.body.sessionsLimit);
+  if (sessionsLimit !== undefined) player.sessionsLimit = sessionsLimit;
 
   // Handle image replacement
   if (req.file) {

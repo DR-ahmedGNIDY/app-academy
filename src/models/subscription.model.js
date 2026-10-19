@@ -39,6 +39,18 @@ const subscriptionSchema = new mongoose.Schema(
         message: 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية',
       },
     },
+    // عدد حصص الاشتراك (اختياري). عند استهلاكها ينتهي الاشتراك حتى لو لم ينتهِ تاريخه.
+    sessionsLimit: {
+      type: Number,
+      default: null,
+      min: [1, 'عدد الحصص يجب أن يكون 1 على الأقل'],
+      max: [365, 'عدد الحصص كبير جداً'],
+    },
+    // لحظة استهلاك آخر حصة (null = لم تُستهلك). النهاية الفعلية = exhaustedAt ?? endDate.
+    exhaustedAt: {
+      type: Date,
+      default: null,
+    },
     notes: {
       type: String,
       trim: true,
@@ -72,11 +84,11 @@ const subscriptionSchema = new mongoose.Schema(
 
 // Virtuals
 subscriptionSchema.virtual('isActive').get(function () {
-  return new Date() <= this.endDate;
+  return !this.exhaustedAt && new Date() <= this.endDate;
 });
 
 subscriptionSchema.virtual('status').get(function () {
-  return new Date() <= this.endDate ? 'active' : 'expired';
+  return !this.exhaustedAt && new Date() <= this.endDate ? 'active' : 'expired';
 });
 
 // Indexes

@@ -99,6 +99,13 @@ const playerSchema = new mongoose.Schema(
         message: 'أيام الحضور غير صحيحة',
       },
     },
+    // عدد الحصص الافتراضي لاشتراكات اللاعب (اختياري؛ null = بلا حدّ، الاشتراك بالتاريخ فقط).
+    sessionsLimit: {
+      type: Number,
+      default: null,
+      min: [1, 'عدد الحصص يجب أن يكون 1 على الأقل'],
+      max: [365, 'عدد الحصص كبير جداً'],
+    },
     isActive: {
       type: Boolean,
       default: true,

@@ -22,6 +22,8 @@ function resolveAcademyId(req, paramAcademyId) {
 // ─── POST / ──────────────────────────────────────────────────────────────────
 const createSubscription = async (req, res, next) => {
   const { playerId, type, amount, startDate, endDate, notes } = req.body;
+  // عدد الحصص: القيمة المرسلة (null/فارغ = بلا حدّ)، وإن لم تُرسل فالافتراضي المحفوظ على اللاعب.
+  const rawLimit = req.body.sessionsLimit;
 
   // Determine academyId — super_admin يحدّدها، غيره مُقيَّد بأكاديميته.
   let academyId;
@@ -56,9 +58,16 @@ const createSubscription = async (req, res, next) => {
     startDate,
     endDate,
     notes,
+    sessionsLimit: rawLimit === undefined
+      ? (player.sessionsLimit || null)
+      : (parseInt(rawLimit, 10) > 0 ? parseInt(rawLimit, 10) : null),
   });
 
   logger.info(`Subscription created: ${subscription._id} for player ${playerId}`);
+  // حضور "الدفع لاحقاً" السابق يُحتسب على الاشتراك الجديد — قد يستهلك حصصه فوراً.
+  if (subscription.sessionsLimit) {
+    await require('./attendance.controller').refreshPlayerQuotas(player._id);
+  }
   logActivity(req, {
     actionType: type === 'RENEWAL' ? 'RENEW_SUBSCRIPTION' : 'ADD_SUBSCRIPTION',
     entityType: 'SUBSCRIPTION',
@@ -172,8 +181,9 @@ const getSubscriptionsByPlayer = async (req, res, next) => {
   // Status filter using endDate comparison
   if (req.query.status === 'active') {
     filter.endDate = { $gte: new Date() };
+    filter.exhaustedAt = null;
   } else if (req.query.status === 'expired') {
-    filter.endDate = { $lt: new Date() };
+    filter.$or = [{ endDate: { $lt: new Date() } }, { exhaustedAt: { $ne: null } }];
   }
 
   const subscriptions = await Subscription.find(filter).sort({ startDate: -1 });
@@ -213,8 +223,9 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
   // Status filter
   if (req.query.status === 'active') {
     filter.endDate = { $gte: new Date() };
+    filter.exhaustedAt = null;
   } else if (req.query.status === 'expired') {
-    filter.endDate = { $lt: new Date() };
+    filter.$or = [{ endDate: { $lt: new Date() } }, { exhaustedAt: { $ne: null } }];
     // كل تجديد بينشئ سجل اشتراك جديد، فيفضل السجل القديم منتهي الصلاحية
     // بتاريخه. لازم نستبعد أي لاعب عنده اشتراك نشط حاليًا (بعد التجديد)
     // من قائمة "منتهي" — حالة اللاعب الحقيقية هي أحدث اشتراك، مش كل سجل
@@ -222,6 +233,7 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
     const activePlayerIds = await Subscription.distinct('playerId', {
       academyId,
       endDate: { $gte: new Date() },
+      exhaustedAt: null,
     });
     if (activePlayerIds.length) {
       filter.playerId = { $nin: activePlayerIds };
@@ -276,7 +288,7 @@ const getAcademyPlayerStatusMap = async (req, res, next) => {
 
   const rows = await Subscription.aggregate([
     { $match: { academyId: new mongoose.Types.ObjectId(academyId) } },
-    { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+    { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
   ]);
 
   const statusMap = {};
@@ -338,12 +350,12 @@ const getRevenueSummary = async (req, res, next) => {
         // نُجمّع لكل لاعب أحدث تاريخ انتهاء بين كل اشتراكاته، ونحكم على حالته
         // بناءً عليه — عشان لاعب جدّد اشتراكه ميتحسبش "منتهي" بسبب سجل قديم.
         activeCount: [
-          { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+          { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
           { $match: { maxEndDate: { $gte: now } } },
           { $count: 'count' },
         ],
         expiredCount: [
-          { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+          { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
           { $match: { maxEndDate: { $lt: now } } },
           { $count: 'count' },
         ],

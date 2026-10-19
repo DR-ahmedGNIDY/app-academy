@@ -64,6 +64,11 @@ const attendanceSchema = new mongoose.Schema(
       },
       default: 'regular',
     },
+    // وقت إرسال إشعار "قيّم تمرينك" (null = لم يُرسل) — انظر trainingRatingScheduler.
+    ratingRequestSentAt: {
+      type: Date,
+      default: null,
+    },
     // الاشتراك الذي يُحتسب له حضور التعويض (makeup فقط).
     subscriptionId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -96,6 +101,7 @@ const attendanceSchema = new mongoose.Schema(
 attendanceSchema.index({ playerId: 1, date: 1 }, { unique: true });
 // تسريع السجل والتقارير.
 attendanceSchema.index({ academyId: 1, date: 1 });
+attendanceSchema.index({ ratingRequestSentAt: 1, timestamp: 1 });
 attendanceSchema.index({ academyId: 1, sport: 1, date: 1 });
 
 const Attendance = mongoose.model('Attendance', attendanceSchema);

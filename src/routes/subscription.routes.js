@@ -52,6 +52,9 @@ const createValidators = [
   body('notes')
     .optional()
     .isLength({ max: 500 }).withMessage('الملاحظات لا يمكن أن تتجاوز 500 حرف'),
+  body('sessionsLimit')
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1, max: 365 }).withMessage('عدد الحصص غير صحيح'),
   body('academyId')
     .optional()
     .isMongoId().withMessage('معرّف الأكاديمية غير صحيح'),

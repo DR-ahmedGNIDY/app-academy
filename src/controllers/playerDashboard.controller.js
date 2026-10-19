@@ -50,7 +50,9 @@ const getPlayerDashboard = async (req, res, next) => {
         startDate: latestSub.startDate,
         endDate: latestSub.endDate,
         amount: latestSub.amount,
-        isActive: new Date() <= latestSub.endDate,
+        isActive: !latestSub.exhaustedAt && new Date() <= latestSub.endDate,
+        sessionsLimit: latestSub.sessionsLimit || null,
+        exhaustedAt: latestSub.exhaustedAt || null,
         daysRemaining: daysBetween(latestSub.endDate),
       }
     : null;

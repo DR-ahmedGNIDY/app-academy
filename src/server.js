@@ -35,6 +35,8 @@ const notificationRoutes = require('./routes/notification.routes');
 const academyAlbumRoutes = require('./routes/academyAlbum.routes');
 const storeRoutes = require('./routes/store.routes');
 const matchRoutes = require('./routes/match.routes');
+const trainingRatingRoutes = require('./routes/trainingRating.routes');
+const { startTrainingRatingScheduler } = require('./utils/trainingRatingScheduler');
 
 const app = express();
 
@@ -119,12 +121,14 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/academy-album', academyAlbumRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/matches', matchRoutes);
+app.use('/api/v1/training-ratings', trainingRatingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
+  startTrainingRatingScheduler();
   logger.info(`🚀 الخادم يعمل على المنفذ ${PORT} في بيئة ${process.env.NODE_ENV}`);
 });
 

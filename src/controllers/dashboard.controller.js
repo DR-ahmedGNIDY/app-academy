@@ -62,12 +62,12 @@ const getDashboardStats = async (req, res, next) => {
           // حالته بناءً عليه — عشان لاعب جدّد اشتراكه ميتحسبش "منتهي" بسبب
           // سجل قديم قبل التجديد.
           activeSubscriptions: [
-            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
             { $match: { maxEndDate: { $gte: now } } },
             { $count: 'count' },
           ],
           expiredSubscriptions: [
-            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
             { $match: { maxEndDate: { $lt: now } } },
             { $count: 'count' },
           ],
@@ -400,12 +400,12 @@ const getSportStats = async (req, res, next) => {
       {
         $facet: {
           active: [
-            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
             { $match: { maxEndDate: { $gte: now } } },
             { $count: 'count' },
           ],
           expired: [
-            { $group: { _id: '$playerId', maxEndDate: { $max: '$endDate' } } },
+            { $group: { _id: '$playerId', maxEndDate: { $max: { $ifNull: ['$exhaustedAt', '$endDate'] } } } },
             { $match: { maxEndDate: { $lt: now } } },
             { $count: 'count' },
           ],

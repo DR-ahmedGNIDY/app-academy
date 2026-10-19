@@ -94,7 +94,7 @@ const recordAttendance = async (req, res, next) => {
 
   // 3) فحص حالة الاشتراك — آخر اشتراك للاعب (الأحدث تاريخ انتهاء).
   const latestSubscription = await latestSubscriptionOf(player._id);
-  const subscriptionExpired = !latestSubscription || latestSubscription.endDate < new Date();
+  const subscriptionExpired = !latestSubscription || !isSubActive(latestSubscription);
 
   if (subscriptionExpired && !mode) {
     return sendSuccess(res, {
@@ -131,6 +131,10 @@ const recordAttendance = async (req, res, next) => {
     });
 
     logger.info(`Attendance recorded: ${player.playerCode} @ ${date} ${time} [${kind}]`);
+    // العادي يُحتسب على الاشتراك النشط، والتعويض على الاشتراك السابق — كلاهما = latestSubscription.
+    if (latestSubscription && (kind === 'regular' || kind === 'makeup')) {
+      await refreshExhaustion(latestSubscription, player);
+    }
     logActivity(req, {
       actionType: 'RECORD_ATTENDANCE', entityType: 'ATTENDANCE',
       entityId: player._id, entityName: player.fullName, academyId: player.academyId,
@@ -257,6 +261,76 @@ const expectedInRange = (days, startStr, endStr) => {
 const latestSubscriptionOf = (playerId) =>
   Subscription.findOne({ playerId }).sort({ endDate: -1 });
 
+// نشط ⇔ لم تُستهلك حصصه ولم ينتهِ تاريخه.
+const isSubActive = (sub) => !sub.exhaustedAt && sub.endDate >= new Date();
+
+// النهاية الفعلية للاشتراك ('YYYY-MM-DD'): يوم استهلاك آخر حصة إن سبق تاريخ النهاية.
+const effectiveEndStr = (sub) => {
+  const end = dateToStr(new Date(sub.endDate));
+  if (!sub.exhaustedAt) return end;
+  const ex = dateToStr(new Date(sub.exhaustedAt));
+  return ex < end ? ex : end;
+};
+
+// بحث عربي مرن: أ/إ/آ/ا، ة/ه، ى/ي، ؤ/و، ئ/ي متكافئة، والتشكيل والتطويل مُتجاهَلان.
+const AR_GROUPS = [['ا', 'أ', 'إ', 'آ', 'ٱ'], ['ه', 'ة'], ['ي', 'ى', 'ئ'], ['و', 'ؤ']];
+const arabicLooseRegex = (q) => {
+  const cleaned = String(q).replace(/[ً-ْـ]/g, '');
+  const ignore = '[ً-ْـ]*';
+  return Array.from(cleaned).map((ch) => {
+    const g = AR_GROUPS.find((grp) => grp.includes(ch));
+    return (g ? `[${g.join('')}]` : escapeRegex(ch)) + ignore;
+  }).join('');
+};
+
+// يعيد حساب استهلاك حصص اشتراك sub: يضبط exhaustedAt عند بلوغ الحد (ويُلغيه لو نقص
+// العدد بعد حذف سجل)، ويرسل إشعار "انتهت الحصص" للإدارة واللاعب مرة واحدة عند الاستهلاك.
+const refreshExhaustion = async (sub, player) => {
+  const limit = sub.sessionsLimit;
+  if (!limit) {
+    if (sub.exhaustedAt) { sub.exhaustedAt = null; await sub.save(); }
+    return null;
+  }
+  const S = {
+    id: sub._id.toString(),
+    start: dateToStr(new Date(sub.startDate)),
+    end: effectiveEndStr(sub),
+    prevEnd: await prevEndOf(sub),
+  };
+  const records = await Attendance.find({
+    playerId: sub.playerId,
+    $or: [{ date: { $gte: lowerBoundOf(S), $lte: S.end } }, { subscriptionId: sub._id }],
+  }).select(COUNT_FIELDS + ' timestamp').sort({ date: 1 }).lean();
+  const counted = records.filter((r) => countsFor(r, S));
+  const used = counted.length;
+  if (used >= limit && !sub.exhaustedAt) {
+    sub.exhaustedAt = counted[limit - 1].timestamp || new Date();
+    await sub.save();
+    const p = player || await Player.findById(sub.playerId).select('fullName academyId');
+    const body = `${p.fullName} أنهى حصص اشتراكه (${limit} من ${limit}) — الاشتراك انتهى ويحتاج تجديد`;
+    const meta = { subscriptionId: S.id, playerId: sub.playerId.toString(), sessionsLimit: limit };
+    notify({
+      recipientType: 'academy', recipientId: sub.academyId, academyId: sub.academyId,
+      type: 'SESSIONS_EXHAUSTED', title: 'لاعب أنهى حصصه', body, meta,
+    });
+    notify({
+      recipientType: 'player', recipientId: sub.playerId, academyId: sub.academyId,
+      type: 'SESSIONS_EXHAUSTED', title: 'انتهت حصص اشتراكك',
+      body: `لقد حضرت ${limit} من ${limit} حصة — برجاء تجديد الاشتراك`, meta,
+    });
+  } else if (used < limit && sub.exhaustedAt) {
+    sub.exhaustedAt = null;
+    await sub.save();
+  }
+  return { used, limit };
+};
+
+// إعادة حساب كل اشتراكات اللاعب ذات الحد (بعد حذف سجل أو إنشاء اشتراك).
+const refreshPlayerQuotas = async (playerId) => {
+  const subs = await Subscription.find({ playerId, sessionsLimit: { $gt: 0 } });
+  for (const sub of subs) await refreshExhaustion(sub);
+};
+
 // نوع سجل الحضور — السجلات القديمة بلا kind تُشتق من subscriptionExpiredAtCheckin.
 const kindOf = (r) => r.kind || (r.subscriptionExpiredAtCheckin ? 'pay_later' : 'regular');
 
@@ -292,8 +366,8 @@ const prevEndOf = async (sub) => {
     playerId: sub.playerId,
     _id: { $ne: sub._id },
     endDate: { $lt: sub.endDate },
-  }).sort({ endDate: -1 }).select('endDate');
-  return prev ? dateToStr(prev.endDate) : null;
+  }).sort({ endDate: -1 }).select('endDate exhaustedAt');
+  return prev ? effectiveEndStr(prev) : null;
 };
 
 // إحصائيات حضور اللاعب داخل اشتراك معيّن.
@@ -304,9 +378,9 @@ const subscriptionStats = async (player, sub) => {
     return { status: 'none', subscription: null, present: 0, absent: 0, expected: 0, expectedTotal: 0 };
   }
   const today = serverDateStr();
-  const active = sub.endDate >= new Date();
+  const active = isSubActive(sub);
   const startStr = dateToStr(sub.startDate);
-  const endStr = dateToStr(sub.endDate);
+  const endStr = effectiveEndStr(sub);
   const countUntil = active && today < endStr ? today : endStr;
   const days = player.attendanceDays;
   const S = { id: sub._id.toString(), start: startStr, end: endStr, prevEnd: await prevEndOf(sub) };
@@ -321,7 +395,9 @@ const subscriptionStats = async (player, sub) => {
   const expected = expectedInRange(days, startStr, countUntil);
   return {
     status: active ? 'active' : 'expired',
-    subscription: { id: sub._id.toString(), type: sub.type, startDate: startStr, endDate: endStr },
+    subscription: { id: sub._id.toString(), type: sub.type, startDate: startStr, endDate: dateToStr(sub.endDate) },
+    sessionsLimit: sub.sessionsLimit || null,
+    exhausted: !!sub.exhaustedAt,
     present,
     absent: Math.max(expected - present, 0),
     expected,
@@ -354,8 +430,8 @@ const getAttendanceReport = async (req, res, next) => {
 
   // (أ) الاشتراك النشط لكل لاعب = أحدث اشتراك (أبعد endDate) لم ينتهِ بعد.
   // نفس تعريف شاشة المسح (latestSubscriptionOf): آخر اشتراك endDate >= الآن.
-  const activeSubs = await Subscription.find({ academyId, endDate: { $gte: now } })
-    .select('playerId type startDate endDate')
+  const activeSubs = await Subscription.find({ academyId, endDate: { $gte: now }, exhaustedAt: null })
+    .select('playerId type startDate endDate sessionsLimit')
     .sort({ endDate: -1 })
     .lean();
   const activeSubMap = {};
@@ -383,14 +459,15 @@ const getAttendanceReport = async (req, res, next) => {
     .map((p) => p._id);
   const allSubs = activeIds.length
     ? await Subscription.find({ academyId, playerId: { $in: activeIds } })
-      .select('playerId endDate').lean()
+      .select('playerId endDate exhaustedAt').lean()
     : [];
   const subsByPlayer = {};
   for (const s of allSubs) {
     const key = s.playerId.toString();
     const active = activeSubMap[key];
     if (s._id.toString() === active._id.toString() || s.endDate >= active.endDate) continue;
-    if (!subsByPlayer[key] || s.endDate > subsByPlayer[key]) subsByPlayer[key] = s.endDate;
+    const eff = effectiveEndStr(s);
+    if (!subsByPlayer[key] || eff > subsByPlayer[key]) subsByPlayer[key] = eff;
   }
   const periodOf = {};
   let minStart = null;
@@ -401,7 +478,7 @@ const getAttendanceReport = async (req, res, next) => {
       id: s._id.toString(),
       start: dateToStr(new Date(s.startDate)),
       end: dateToStr(new Date(s.endDate)),
-      prevEnd: subsByPlayer[key] ? dateToStr(new Date(subsByPlayer[key])) : null,
+      prevEnd: subsByPlayer[key] || null,
     };
     periodOf[key] = S;
     const lb = lowerBoundOf(S);
@@ -470,6 +547,7 @@ const getAttendanceReport = async (req, res, next) => {
       subscriptionStatus: 'active',
       subscriptionStart: startStr,
       subscriptionEnd: endStr,
+      sessionsLimit: sub.sessionsLimit || null,
       expected,
       expectedTotal,
       // توافق رجعي مع نسخ الواجهة القديمة (الدوائر).
@@ -505,8 +583,8 @@ const searchAttendancePlayers = async (req, res, next) => {
   const q = String(req.query.search || '').trim();
   if (!q) return sendSuccess(res, { data: [], message: 'لا توجد نتائج' });
 
-  const rx = new RegExp(escapeRegex(q), 'i');
-  const filter = { academyId, $or: [{ fullName: rx }, { playerCode: rx }] };
+  const rx = new RegExp(arabicLooseRegex(q), 'i');
+  const filter = { academyId, isActive: true, $or: [{ fullName: rx }, { playerCode: rx }] };
   if (req.query.sport && req.query.sport.trim()) filter.sport = req.query.sport.trim();
   const players = await Player.find(filter)
     .select('fullName playerCode sport image_url')
@@ -556,6 +634,7 @@ const deleteAttendance = async (req, res, next) => {
   }
 
   await record.deleteOne();
+  await refreshPlayerQuotas(record.playerId);
 
   logActivity(req, {
     actionType: 'DELETE_ATTENDANCE', entityType: 'ATTENDANCE',
@@ -571,4 +650,5 @@ module.exports = {
   searchAttendancePlayers,
   getPlayerAttendanceSummary,
   deleteAttendance,
+  refreshPlayerQuotas,
 };

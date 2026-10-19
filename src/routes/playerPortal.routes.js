@@ -15,6 +15,7 @@ const {
   deleteComment,
 } = require('../controllers/academyAlbum.controller');
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
+const { getPendingRatings, createRating } = require('../controllers/trainingRating.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -79,6 +80,20 @@ router.post(
   ],
   validate,
   playerSendMessage
+);
+
+// ── تقييم التمرين (يوم التمرين واليوم التالي) ──
+router.get('/training-ratings/pending', getPendingRatings);
+router.post(
+  '/training-ratings',
+  [
+    body('attendanceId').isMongoId().withMessage('معرّف التمرين غير صحيح'),
+    body('stars').isInt({ min: 1, max: 5 }).withMessage('اختر تقييماً من 1 إلى 5 نجوم'),
+    body('notes').optional({ nullable: true })
+      .isLength({ max: 500 }).withMessage('الملاحظات لا يمكن أن تتجاوز 500 حرف'),
+  ],
+  validate,
+  createRating
 );
 
 // ── إشعارات اللاعب ──
