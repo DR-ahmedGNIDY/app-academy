@@ -4,6 +4,7 @@ const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notify } = require('../utils/notificationService');
 
 // نفس نمط الألبوم/المتجر/المجموعات: super_admin وحده يمرّر academyId صراحةً،
 // وكل من عداه مُقيَّد حتمياً بأكاديميته.
@@ -143,9 +144,21 @@ const addPlayers = async (req, res, next) => {
   const ids = Array.isArray(req.body.playerIds) ? req.body.playerIds : [];
   if (ids.length === 0) return next(new AppError('قائمة اللاعبين مطلوبة', 400));
 
-  const merged = new Set([...match.playerIds.map((id) => id.toString()), ...ids]);
-  match.playerIds = Array.from(merged);
+  const existing = new Set(match.playerIds.map((id) => id.toString()));
+  const added = ids.map(String).filter((id) => !existing.has(id));
+  match.playerIds = Array.from(new Set([...existing, ...added]));
   await match.save();
+
+  // إشعار اللاعبين المضافين حديثاً فقط (لا تكرار لمن كان مسجّلاً).
+  const where = match.location ? ` في ${match.location}` : '';
+  for (const playerId of added) {
+    notify({
+      recipientType: 'player', recipientId: playerId, academyId: match.academyId,
+      type: 'MATCH_ADDED', title: 'تم تسجيلك في مباراة',
+      body: `${match.name} — يوم ${match.date} الساعة ${match.time}${where}`,
+      meta: { matchId: match._id.toString(), date: match.date, time: match.time },
+    });
+  }
 
   return sendSuccess(res, { data: match.toJSON(), message: 'تمت إضافة اللاعبين بنجاح' });
 };
@@ -177,7 +190,34 @@ const logReminder = async (req, res, next) => {
   return sendSuccess(res, { data: match.toJSON(), message: 'تم تسجيل التذكير بنجاح' });
 };
 
+// ─── GET /player/matches (بوابة اللاعب) ─────────────────────────────────────────
+// مباريات اللاعب المسجّل فيها: القادمة (اليوم فما بعد) تصاعدياً، والسابقة تنازلياً.
+// ?today=YYYY-MM-DD من جهاز اللاعب لأن match.date نص محلي.
+const getPlayerMatches = async (req, res) => {
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const d = new Date();
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(req.query.today || '')
+    ? req.query.today
+    : `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const matches = await Match.find({ academyId: req.player.academyId, playerIds: req.player._id })
+    .select('name location date time notes sport')
+    .lean();
+  const toItem = (m) => ({
+    _id: m._id.toString(), name: m.name, location: m.location || '',
+    date: m.date, time: m.time, notes: m.notes || '', sport: m.sport || null,
+  });
+  const upcoming = matches.filter((m) => m.date >= today)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(toItem);
+  const past = matches.filter((m) => m.date < today)
+    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)).slice(0, 30).map(toItem);
+  return sendSuccess(res, {
+    data: { upcoming, past, upcomingCount: upcoming.length },
+    message: 'تم جلب المباريات بنجاح',
+  });
+};
+
 module.exports = {
+  getPlayerMatches,
   getMatches,
   getMatch,
   createMatch,

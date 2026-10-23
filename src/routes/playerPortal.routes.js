@@ -16,6 +16,7 @@ const {
 } = require('../controllers/academyAlbum.controller');
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { getPendingRatings, createRating } = require('../controllers/trainingRating.controller');
+const { getPlayerMatches } = require('../controllers/match.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -81,6 +82,9 @@ router.post(
   validate,
   playerSendMessage
 );
+
+// ── مباريات اللاعب ──
+router.get('/matches', getPlayerMatches);
 
 // ── تقييم التمرين (يوم التمرين واليوم التالي) ──
 router.get('/training-ratings/pending', getPendingRatings);

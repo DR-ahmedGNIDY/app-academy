@@ -68,7 +68,14 @@ const evaluationSchema = new mongoose.Schema(
       transform: function (doc, ret) {
         ret._id = ret._id.toString();
         ret.academyId = ret.academyId?.toString();
-        ret.playerId = ret.playerId?.toString();
+        // playerId قد يكون مُعبَّأً (populate) — نحتفظ بالاسم والكود قبل تحويله لمعرّف.
+        if (ret.playerId && typeof ret.playerId === 'object' && ret.playerId.fullName !== undefined) {
+          ret.playerName = ret.playerId.fullName;
+          ret.playerCode = ret.playerId.playerCode;
+          ret.playerId = ret.playerId._id?.toString();
+        } else {
+          ret.playerId = ret.playerId?.toString();
+        }
         ret.evaluatorId = ret.evaluatorId?.toString();
         delete ret.__v;
         return ret;

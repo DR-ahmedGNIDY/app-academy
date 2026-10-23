@@ -32,6 +32,7 @@ const notificationSchema = new mongoose.Schema(
         'SUBSCRIPTION_EXPIRING',
         'SESSIONS_EXHAUSTED',
         'TRAINING_RATING_REQUEST',
+        'MATCH_ADDED',
       ],
       required: true,
     },
