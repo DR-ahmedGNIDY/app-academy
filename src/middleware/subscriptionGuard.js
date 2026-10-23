@@ -53,7 +53,29 @@ const blockIfNotWritable = async (req, res, next) => {
   }
 };
 
-// يمنع تجاوز الحد الأقصى للاعبين (خاصةً أثناء الفترة التجريبية = 7 لاعبين).
+// بعد انتهاء الاشتراك تبقى إدارة اللاعبين (إضافة/تعديل) متاحة — لكن الاشتراكات
+// والحضور وباقي الأقسام تبقى للقراءة فقط عبر blockIfNotWritable. التعليق اليدوي
+// (suspended) يمنع الكتابة هنا أيضاً.
+const blockIfSuspended = async (req, res, next) => {
+  try {
+    if (req.method === 'GET') return next();
+    if (!req.user || req.user.role === 'super_admin') return next();
+    const sub = await loadSubscription(req);
+    if (sub && sub.effectiveStatus() === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        code: 'SUBSCRIPTION_EXPIRED',
+        status: 'suspended',
+        message: 'تم تعليق اشتراك الأكاديمية. يرجى التواصل مع إدارة Nosait.',
+      });
+    }
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// يمنع تجاوز الحد الأقصى للاعبين (الفترة التجريبية = sub.maxPlayers).
 // يُوضَع قبل إنشاء اللاعب. يعدّ اللاعبين النشطين الحاليين للأكاديمية.
 const enforcePlayerLimit = async (req, res, next) => {
   try {
@@ -77,7 +99,7 @@ const enforcePlayerLimit = async (req, res, next) => {
         isTrial,
         maxPlayers: sub.maxPlayers,
         message: isTrial
-          ? 'لقد وصلت إلى الحد الأقصى للفترة التجريبية (7 لاعبين). تواصل معنا للترقية.'
+          ? `لقد وصلت إلى الحد الأقصى للفترة التجريبية (${sub.maxPlayers} لاعباً). تواصل معنا للترقية.`
           : `لقد وصلت إلى الحد الأقصى لعدد اللاعبين (${sub.maxPlayers}). تواصل مع إدارة Nosait.`,
       });
     }
@@ -88,4 +110,4 @@ const enforcePlayerLimit = async (req, res, next) => {
   }
 };
 
-module.exports = { blockIfNotWritable, enforcePlayerLimit, loadSubscription };
+module.exports = { blockIfNotWritable, blockIfSuspended, enforcePlayerLimit, loadSubscription };

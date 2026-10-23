@@ -6,7 +6,7 @@ const { generateToken, generateRefreshToken } = require('../utils/jwt');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 
-const TRIAL_DAYS = 7;
+const TRIAL_DAYS = 30;
 
 // يطبّع قائمة الرياضات القادمة من فورم التسجيل (multipart):
 // sports = نص JSON لقائمة، أو قائمة، أو نص مفصول بفواصل. fallback: sport المفردة.
@@ -32,7 +32,7 @@ const parseSports = (sports, sport) => {
   }
   return out;
 };
-const TRIAL_MAX_PLAYERS = 7;
+const TRIAL_MAX_PLAYERS = 25;
 
 // POST /api/v1/register-academy  (عام) — تسجيل ذاتي لأكاديمية جديدة.
 // ينشئ تلقائياً: Academy + User(academy_admin) + AcademySubscription(trial).

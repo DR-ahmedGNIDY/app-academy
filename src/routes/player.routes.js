@@ -21,15 +21,16 @@ const {
 const { protect, requirePermission } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 const { uploadPlayerImage } = require('../config/cloudinary');
-const { blockIfNotWritable, enforcePlayerLimit } = require('../middleware/subscriptionGuard');
+const { blockIfSuspended, enforcePlayerLimit } = require('../middleware/subscriptionGuard');
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(protect);
 
-// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
-router.use(blockIfNotWritable);
+// حارس اشتراك المنصة: إدارة اللاعبين تبقى متاحة بعد انتهاء الاشتراك (اشتراكات
+// اللاعبين والحضور هي المقفولة)، وتُمنع الكتابة فقط عند التعليق اليدوي.
+router.use(blockIfSuspended);
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ router.patch(
 router.post(
   '/',
   requirePermission('register_players'),
-  enforcePlayerLimit, // يمنع تجاوز الحد الأقصى للاعبين (7 أثناء التجربة)
+  enforcePlayerLimit, // يمنع تجاوز الحد الأقصى للاعبين (حد الاشتراك/التجربة)
   uploadPlayerImage.single('image'),
   createValidators,
   validate,
