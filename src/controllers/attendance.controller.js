@@ -335,7 +335,7 @@ const refreshPlayerQuotas = async (playerId) => {
 const kindOf = (r) => r.kind || (r.subscriptionExpiredAtCheckin ? 'pay_later' : 'regular');
 
 // الحقول اللازمة لقاعدة الاحتساب.
-const COUNT_FIELDS = 'playerId date kind subscriptionId subscriptionExpiredAtCheckin';
+const COUNT_FIELDS = 'playerId date kind subscriptionId subscriptionExpiredAtCheckin countsAsSession';
 
 // هل يُحتسب سجل الحضور للاشتراك S؟
 // S = { id, start, end, prevEnd } (تواريخ 'YYYY-MM-DD'؛ prevEnd = نهاية الاشتراك السابق له أو null)
@@ -344,10 +344,13 @@ const COUNT_FIELDS = 'playerId date kind subscriptionId subscriptionExpiredAtChe
 //              تاريخه ≤ end وبعد prevEnd (أو ≥ start لو لا يوجد سابق)
 //  makeup    → subscriptionId === S.id (تعويض غياب في الاشتراك السابق)
 //  free      → لا يُحتسب أبداً
+//  match     → حضور يوم مباراة: يُحتسب كالعادي فقط لو اختارت الإدارة countsAsSession
 const countsFor = (r, S) => {
   switch (kindOf(r)) {
     case 'free':
       return false;
+    case 'match':
+      return r.countsAsSession === true && r.date >= S.start && r.date <= S.end;
     case 'makeup':
       return !!r.subscriptionId && r.subscriptionId.toString() === S.id;
     case 'pay_later':

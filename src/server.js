@@ -37,6 +37,7 @@ const storeRoutes = require('./routes/store.routes');
 const matchRoutes = require('./routes/match.routes');
 const trainingRatingRoutes = require('./routes/trainingRating.routes');
 const { startTrainingRatingScheduler } = require('./utils/trainingRatingScheduler');
+const { startMatchAttendanceScheduler } = require('./utils/matchAttendanceScheduler');
 
 const app = express();
 
@@ -129,6 +130,7 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   startTrainingRatingScheduler();
+  startMatchAttendanceScheduler();
   logger.info(`🚀 الخادم يعمل على المنفذ ${PORT} في بيئة ${process.env.NODE_ENV}`);
 });
 

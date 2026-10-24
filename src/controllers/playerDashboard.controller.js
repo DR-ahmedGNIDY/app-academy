@@ -84,6 +84,8 @@ const getPlayerDashboard = async (req, res, next) => {
       },
       schedule: {
         attendanceDays: player.attendanceDays || [],
+        // موعد بداية التمرين لكل يوم (فارغ لو لم تُحدَّد مواعيد).
+        trainingTimes: player.trainingTimes ? Object.fromEntries(player.trainingTimes) : {},
         sport: player.sport || null,
       },
       attendance: {
@@ -92,6 +94,7 @@ const getPlayerDashboard = async (req, res, next) => {
           date: a.date,
           time: a.time,
           status: a.status,
+          kind: a.kind || 'regular',
         })),
       },
       subscription,

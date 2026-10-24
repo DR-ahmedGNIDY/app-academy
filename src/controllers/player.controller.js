@@ -23,6 +23,23 @@ const parseSessionsLimit = (raw) => {
   return Number.isFinite(n) && n > 0 ? Math.min(n, 365) : null;
 };
 
+// مواعيد التمرين: كائن { يوم: 'HH:mm' } (أو نص JSON في multipart).
+// undefined = لم يُرسل، {} أو null = حذف المواعيد. نُبقي الأيام الصحيحة فقط.
+const parseTrainingTimes = (raw) => {
+  if (raw === undefined) return undefined;
+  let obj = raw;
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return {};
+    try { obj = JSON.parse(raw); } catch (_) { return undefined; }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+  const out = {};
+  for (const [day, time] of Object.entries(obj)) {
+    if (typeof time === 'string' && /^\d{2}:\d{2}$/.test(time)) out[day] = time;
+  }
+  return out;
+};
+
 const parseArrayField = (raw) => {
   if (raw === undefined || raw === null) return undefined;
   if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
@@ -260,6 +277,8 @@ const createPlayer = async (req, res, next) => {
   if (attendanceDays !== undefined) playerData.attendanceDays = attendanceDays;
   const sessionsLimit = parseSessionsLimit(req.body.sessionsLimit);
   if (sessionsLimit !== undefined) playerData.sessionsLimit = sessionsLimit;
+  const trainingTimes = parseTrainingTimes(req.body.trainingTimes);
+  if (trainingTimes !== undefined) playerData.trainingTimes = trainingTimes;
 
   if (req.file) {
     playerData.image_url = req.file.path;
@@ -356,6 +375,8 @@ const updatePlayer = async (req, res, next) => {
   if (attendanceDays !== undefined) player.attendanceDays = attendanceDays;
   const sessionsLimit = parseSessionsLimit(req.body.sessionsLimit);
   if (sessionsLimit !== undefined) player.sessionsLimit = sessionsLimit;
+  const trainingTimes = parseTrainingTimes(req.body.trainingTimes);
+  if (trainingTimes !== undefined) player.trainingTimes = trainingTimes;
 
   // Handle image replacement
   if (req.file) {

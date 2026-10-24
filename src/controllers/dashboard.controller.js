@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Player = require('../models/player.model');
 const Subscription = require('../models/subscription.model');
 const Evaluation = require('../models/evaluation.model');
+const { matchRevenueTotal } = require('../utils/matchRevenue');
 const Activity = require('../models/activity.model');
 const Group = require('../models/group.model');
 const Expense = require('../models/expense.model');
@@ -181,6 +182,12 @@ const getDashboardStats = async (req, res, next) => {
   const newSubsDoc = extract(subs.newSubscriptionsCount);
   const renewalsDoc = extract(subs.renewalsCount);
 
+  // اشتراكات المباريات المضافة للإيرادات (إجمالي + الشهر الحالي بتاريخ الدفع).
+  const [matchRevTotal, matchRevMonth] = await Promise.all([
+    matchRevenueTotal({ academyMatch: match }),
+    matchRevenueTotal({ academyMatch: match, from: startOfMonth, to: endOfMonth }),
+  ]);
+
   const evalStats = evaluationStats[0] || { averageEvaluationScore: 0 };
 
   const expensesFacet = expenseStats[0] || {};
@@ -193,8 +200,9 @@ const getDashboardStats = async (req, res, next) => {
       activePlayers: players.activePlayers || 0,
       activeSubscriptions: activeSubsDoc.count || 0,
       expiredSubscriptions: expiredSubsDoc.count || 0,
-      totalRevenue: totalRevDoc.total || 0,
-      currentMonthRevenue: monthRevDoc.total || 0,
+      totalRevenue: (totalRevDoc.total || 0) + matchRevTotal,
+      currentMonthRevenue: (monthRevDoc.total || 0) + matchRevMonth,
+      matchRevenue: matchRevTotal,
       newSubscriptionsCount: newSubsDoc.count || 0,
       renewalsCount: renewalsDoc.count || 0,
       averageEvaluationScore: Math.round((evalStats.averageEvaluationScore || 0) * 100) / 100,
@@ -417,6 +425,7 @@ const getSportStats = async (req, res, next) => {
 
   const subs = subStats[0] || {};
   const extract = (a) => (a && a[0] ? a[0] : {});
+  const sportMatchRevenue = await matchRevenueTotal({ academyMatch: match, sport });
 
   sendSuccess(res, {
     data: {
@@ -424,7 +433,7 @@ const getSportStats = async (req, res, next) => {
       totalPlayers: totalPlayers || 0,
       activeSubscriptions: extract(subs.active).count || 0,
       expiredSubscriptions: extract(subs.expired).count || 0,
-      revenue: extract(subs.revenue).total || 0,
+      revenue: (extract(subs.revenue).total || 0) + sportMatchRevenue,
       recentPlayers,
     },
   });

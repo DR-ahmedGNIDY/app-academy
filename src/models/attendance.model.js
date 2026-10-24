@@ -59,7 +59,7 @@ const attendanceSchema = new mongoose.Schema(
     kind: {
       type: String,
       enum: {
-        values: ['regular', 'pay_later', 'makeup', 'free'],
+        values: ['regular', 'pay_later', 'makeup', 'free', 'match'],
         message: 'نوع الحضور غير صحيح',
       },
       default: 'regular',
@@ -69,6 +69,9 @@ const attendanceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // حضور يوم مباراة (kind: 'match'): المباراة، وهل يُحتسب ضمن حصص الاشتراك.
+    matchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Match', default: null },
+    countsAsSession: { type: Boolean, default: false },
     // الاشتراك الذي يُحتسب له حضور التعويض (makeup فقط).
     subscriptionId: {
       type: mongoose.Schema.Types.ObjectId,

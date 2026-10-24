@@ -363,9 +363,17 @@ const getRevenueSummary = async (req, res, next) => {
     },
   ]);
 
+  // اشتراكات المباريات المضافة للإيرادات.
+  const { matchRevenueTotal } = require('../utils/matchRevenue');
+  const [matchRevTotal, matchRevMonth] = await Promise.all([
+    matchRevenueTotal({ academyMatch: { academyId: academyObjectId } }),
+    matchRevenueTotal({ academyMatch: { academyId: academyObjectId }, from: startOfMonth, to: endOfMonth }),
+  ]);
+
   const result = {
-    totalRevenue: summary?.totalRevenue?.[0]?.total ?? 0,
-    monthlyRevenue: summary?.monthlyRevenue?.[0]?.total ?? 0,
+    totalRevenue: (summary?.totalRevenue?.[0]?.total ?? 0) + matchRevTotal,
+    monthlyRevenue: (summary?.monthlyRevenue?.[0]?.total ?? 0) + matchRevMonth,
+    matchRevenue: matchRevTotal,
     newSubscriptionsCount: summary?.newSubscriptionsCount?.[0]?.count ?? 0,
     renewalsCount: summary?.renewalsCount?.[0]?.count ?? 0,
     activeCount: summary?.activeCount?.[0]?.count ?? 0,

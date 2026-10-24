@@ -99,6 +99,15 @@ const playerSchema = new mongoose.Schema(
         message: 'أيام الحضور غير صحيحة',
       },
     },
+    // موعد بداية التمرين لكل يوم من أيام الحضور (اختياري): { 'السبت': '17:00' }.
+    trainingTimes: {
+      type: Map,
+      of: {
+        type: String,
+        match: [/^\d{2}:\d{2}$/, 'صيغة موعد التمرين غير صحيحة'],
+      },
+      default: undefined,
+    },
     // عدد الحصص الافتراضي لاشتراكات اللاعب (اختياري؛ null = بلا حدّ، الاشتراك بالتاريخ فقط).
     sessionsLimit: {
       type: Number,

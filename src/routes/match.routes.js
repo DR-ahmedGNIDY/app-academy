@@ -9,6 +9,9 @@ const {
   addPlayers,
   removePlayer,
   logReminder,
+  markPaid,
+  unmarkPaid,
+  getMatchRevenue,
 } = require('../controllers/match.controller');
 const { protect, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
@@ -29,10 +32,16 @@ const matchValidators = [
   body('time').matches(/^\d{2}:\d{2}$/).withMessage('صيغة الوقت غير صحيحة'),
   body('notes').optional().isLength({ max: 500 }).withMessage('الملاحظات لا يمكن أن تتجاوز 500 حرف'),
   body('sport').optional().isString(),
+  body('countsAsSession').optional().isBoolean(),
+  body('hasFee').optional().isBoolean(),
+  body('feeAmount').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('قيمة الاشتراك غير صحيحة'),
+  body('addToRevenue').optional().isBoolean(),
 ];
 
 // GET /matches — قراءة مفتوحة لأي مستخدم موثّق
 router.get('/', getMatches);
+// GET /matches/revenue — قبل '/:id'
+router.get('/revenue', getMatchRevenue);
 router.get('/:id', [param('id').isMongoId()], validate, getMatch);
 
 router.post('/', manage, matchValidators, validate, createMatch);
@@ -48,6 +57,10 @@ router.put(
     body('time').optional().matches(/^\d{2}:\d{2}$/),
     body('notes').optional().isLength({ max: 500 }),
     body('sport').optional().isString(),
+  body('countsAsSession').optional().isBoolean(),
+      body('hasFee').optional().isBoolean(),
+      body('feeAmount').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('قيمة الاشتراك غير صحيحة'),
+      body('addToRevenue').optional().isBoolean(),
   ],
   validate,
   updateMatch
@@ -69,6 +82,21 @@ router.delete(
   [param('id').isMongoId(), param('playerId').isMongoId()],
   validate,
   removePlayer
+);
+
+router.post(
+  '/:id/payments/:playerId',
+  manage,
+  [param('id').isMongoId(), param('playerId').isMongoId()],
+  validate,
+  markPaid
+);
+router.delete(
+  '/:id/payments/:playerId',
+  manage,
+  [param('id').isMongoId(), param('playerId').isMongoId()],
+  validate,
+  unmarkPaid
 );
 
 router.post(

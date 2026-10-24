@@ -5,6 +5,23 @@ const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { notify } = require('../utils/notificationService');
+const { matchRevenueTotal } = require('../utils/matchRevenue');
+
+// إعدادات المباراة القابلة للتعديل من فورم الإنشاء/التعديل.
+const applyFeeSettings = (match, body) => {
+  if (body.countsAsSession !== undefined) match.countsAsSession = body.countsAsSession === true || body.countsAsSession === 'true';
+  if (body.hasFee !== undefined) match.hasFee = body.hasFee === true || body.hasFee === 'true';
+  if (body.feeAmount !== undefined) {
+    const n = Number(body.feeAmount);
+    match.feeAmount = body.feeAmount === null || body.feeAmount === '' || !Number.isFinite(n) ? null : n;
+  }
+  if (body.addToRevenue !== undefined) match.addToRevenue = body.addToRevenue === true || body.addToRevenue === 'true';
+  // بلا اشتراك ⇒ لا قيمة ولا إيرادات.
+  if (!match.hasFee) {
+    match.feeAmount = null;
+    match.addToRevenue = false;
+  }
+};
 
 // نفس نمط الألبوم/المتجر/المجموعات: super_admin وحده يمرّر academyId صراحةً،
 // وكل من عداه مُقيَّد حتمياً بأكاديميته.
@@ -86,6 +103,8 @@ const createMatch = async (req, res, next) => {
     time: req.body.time,
     notes: String(req.body.notes || '').trim(),
   });
+  applyFeeSettings(match, req.body);
+  await match.save();
 
   logger.info(`Match created: ${match._id} (academy ${academyId})`);
   logActivity(req, {
@@ -111,6 +130,7 @@ const updateMatch = async (req, res, next) => {
       match[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
     }
   });
+  applyFeeSettings(match, req.body);
   await match.save();
 
   logActivity(req, {
@@ -172,6 +192,9 @@ const removePlayer = async (req, res, next) => {
   match.playerIds = match.playerIds.filter(
     (id) => id.toString() !== req.params.playerId
   );
+  match.payments = match.payments.filter(
+    (p) => p.playerId.toString() !== req.params.playerId
+  );
   await match.save();
 
   return sendSuccess(res, { data: match.toJSON(), message: 'تمت إزالة اللاعب بنجاح' });
@@ -188,6 +211,54 @@ const logReminder = async (req, res, next) => {
   await match.save();
 
   return sendSuccess(res, { data: match.toJSON(), message: 'تم تسجيل التذكير بنجاح' });
+};
+
+// ─── POST /matches/:id/payments/:playerId ──────────────────────────────────────
+// تسجيل دفع اللاعب لاشتراك المباراة (بقيمة الاشتراك الحالية).
+const markPaid = async (req, res, next) => {
+  const match = await Match.findById(req.params.id);
+  if (!match) return next(new AppError('المباراة غير موجودة', 404));
+  assertAccess(req, match);
+  if (!match.hasFee) return next(new AppError('هذه المباراة بلا اشتراك', 400));
+  if (match.feeAmount == null) return next(new AppError('اكتب قيمة اشتراك المباراة أولاً', 400));
+  const pid = req.params.playerId;
+  if (!match.playerIds.some((id) => id.toString() === pid)) {
+    return next(new AppError('اللاعب غير مسجّل في هذه المباراة', 400));
+  }
+  if (!match.payments.some((p) => p.playerId.toString() === pid)) {
+    match.payments.push({ playerId: pid, amount: match.feeAmount, paidAt: new Date() });
+    await match.save();
+  }
+  return sendSuccess(res, { data: match.toJSON(), message: 'تم تسجيل الدفع' });
+};
+
+// ─── DELETE /matches/:id/payments/:playerId ────────────────────────────────────
+const unmarkPaid = async (req, res, next) => {
+  const match = await Match.findById(req.params.id);
+  if (!match) return next(new AppError('المباراة غير موجودة', 404));
+  assertAccess(req, match);
+  match.payments = match.payments.filter((p) => p.playerId.toString() !== req.params.playerId);
+  await match.save();
+  return sendSuccess(res, { data: match.toJSON(), message: 'تم إلغاء تسجيل الدفع' });
+};
+
+// ─── GET /matches/revenue?startDate&endDate&sport ──────────────────────────────
+// إيرادات اشتراكات المباريات (للتقارير المالية) — بتاريخ الدفع.
+const getMatchRevenue = async (req, res) => {
+  const academyId = resolveAcademyFilter(req);
+  const mongoose = require('mongoose');
+  const from = req.query.startDate ? new Date(req.query.startDate) : null;
+  let to = null;
+  if (req.query.endDate) {
+    to = new Date(req.query.endDate);
+    to.setHours(23, 59, 59, 999);
+  }
+  const total = await matchRevenueTotal({
+    academyMatch: { academyId: new mongoose.Types.ObjectId(academyId.toString()) },
+    from, to,
+    sport: req.query.sport || null,
+  });
+  return sendSuccess(res, { data: { total }, message: 'تم جلب إيرادات المباريات' });
 };
 
 // ─── GET /player/matches (بوابة اللاعب) ─────────────────────────────────────────
@@ -218,6 +289,9 @@ const getPlayerMatches = async (req, res) => {
 
 module.exports = {
   getPlayerMatches,
+  markPaid,
+  unmarkPaid,
+  getMatchRevenue,
   getMatches,
   getMatch,
   createMatch,
