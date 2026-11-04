@@ -35,6 +35,7 @@ const notificationRoutes = require('./routes/notification.routes');
 const academyAlbumRoutes = require('./routes/academyAlbum.routes');
 const storeRoutes = require('./routes/store.routes');
 const matchRoutes = require('./routes/match.routes');
+const tournamentRoutes = require('./routes/tournament.routes');
 const trainingRatingRoutes = require('./routes/trainingRating.routes');
 const { startTrainingRatingScheduler } = require('./utils/trainingRatingScheduler');
 const { startMatchAttendanceScheduler } = require('./utils/matchAttendanceScheduler');
@@ -122,6 +123,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/academy-album', academyAlbumRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/matches', matchRoutes);
+app.use('/api/v1/tournaments', tournamentRoutes);
 app.use('/api/v1/training-ratings', trainingRatingRoutes);
 
 app.use(notFound);

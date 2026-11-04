@@ -5,6 +5,7 @@ module.exports = [
   'record_subscriptions',
   'record_evaluations',
   'add_matches',
+  'manage_tournaments',
   'use_album',
   'use_store',
   'view_reports',

@@ -33,6 +33,8 @@ const notificationSchema = new mongoose.Schema(
         'SESSIONS_EXHAUSTED',
         'TRAINING_RATING_REQUEST',
         'MATCH_ADDED',
+        'TOURNAMENT_SCHEDULED',
+        'TOURNAMENT_RESULT',
       ],
       required: true,
     },

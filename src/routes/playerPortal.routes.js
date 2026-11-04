@@ -17,6 +17,7 @@ const {
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { getPendingRatings, createRating } = require('../controllers/trainingRating.controller');
 const { getPlayerMatches } = require('../controllers/match.controller');
+const { listPlayerTournaments, getPlayerTournament } = require('../controllers/tournament.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -85,6 +86,10 @@ router.post(
 
 // ── مباريات اللاعب ──
 router.get('/matches', getPlayerMatches);
+
+// ── البطولات (قراءة فقط — بطولات أكاديمية اللاعب المنشورة) ──
+router.get('/tournaments', listPlayerTournaments);
+router.get('/tournaments/:id', getPlayerTournament);
 
 // ── تقييم التمرين (يوم التمرين واليوم التالي) ──
 router.get('/training-ratings/pending', getPendingRatings);
