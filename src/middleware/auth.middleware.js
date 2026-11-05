@@ -19,6 +19,10 @@ const protect = async (req, res, next) => {
 
     if (!user) return next(new AppError('المستخدم غير موجود', 401));
     if (!user.isActive) return next(new AppError('تم تعطيل هذا الحساب', 401));
+    // توكن صدر قبل آخر تغيير لكلمة المرور (التوكنات القديمة بلا tv تُعامل كـ 0).
+    if ((decoded.tv ?? 0) !== (user.tokenVersion ?? 0)) {
+      return next(new AppError('انتهت الجلسة — سجّل الدخول مرة أخرى', 401));
+    }
 
     req.user = user;
     next();

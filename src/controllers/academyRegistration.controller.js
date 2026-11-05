@@ -108,8 +108,8 @@ const registerAcademy = async (req, res, next) => {
   }
 
   // تسجيل دخول تلقائي.
-  const token = generateToken(user._id);
-  const refreshToken = generateRefreshToken(user._id);
+  const token = generateToken(user._id, user.tokenVersion || 0);
+  const refreshToken = generateRefreshToken(user._id, user.tokenVersion || 0);
 
   return res.status(201).json({
     success: true,

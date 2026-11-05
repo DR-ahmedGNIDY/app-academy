@@ -1,7 +1,7 @@
 const User = require('../models/user.model');
 const AcademySubscription = require('../models/academySubscription.model');
 const AppError = require('../utils/AppError');
-const { generateToken, generateRefreshToken } = require('../utils/jwt');
+const { generateToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
 const { sendSuccess } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 
@@ -43,8 +43,8 @@ const login = async (req, res, next) => {
     return next(new AppError('تم تعطيل هذا الحساب', 403));
   }
 
-  const token = generateToken(user._id);
-  const refreshToken = generateRefreshToken(user._id);
+  const token = generateToken(user._id, user.tokenVersion || 0);
+  const refreshToken = generateRefreshToken(user._id, user.tokenVersion || 0);
 
   const subscription = await buildSubscriptionPayload(user);
 
@@ -135,7 +135,45 @@ const changePassword = async (req, res, next) => {
   await user.save();
 
   logger.info(`Password changed for user: ${user.email}`);
-  return sendSuccess(res, { message: 'تم تغيير كلمة المرور بنجاح' });
+  // تغيير كلمة المرور يرفع tokenVersion فتسقط كل الجلسات القديمة (ومنها المحفوظة
+  // على أجهزة أخرى). نرجّع توكنات جديدة حتى يبقى الجهاز الحالي مسجّلاً.
+  return res.status(200).json({
+    success: true,
+    message: 'تم تغيير كلمة المرور بنجاح',
+    token: generateToken(user._id, user.tokenVersion || 0),
+    refreshToken: generateRefreshToken(user._id, user.tokenVersion || 0),
+  });
 };
 
 module.exports = { login, logout, getMe, updateMe, changePassword };
+
+// ─── POST /auth/refresh ───────────────────────────────────────────────────────
+// يبدّل refresh token صالحاً بتوكن دخول جديد + refresh token جديد (تدوير)،
+// فتبقى الجلسة المحفوظة حيّة طالما استُخدمت خلال مدة صلاحية الـ refresh (30 يوماً).
+// يُرفض إذا تغيّرت كلمة المرور بعد إصداره (tokenVersion) أو عُطّل الحساب.
+const refresh = async (req, res, next) => {
+  const { refreshToken } = req.body;
+  let decoded;
+  try {
+    decoded = verifyRefreshToken(refreshToken);
+  } catch (_) {
+    return next(new AppError('انتهت الجلسة — سجّل الدخول مرة أخرى', 401));
+  }
+  if (decoded.type && decoded.type !== 'refresh') {
+    return next(new AppError('رمز التجديد غير صحيح', 401));
+  }
+  const user = await User.findById(decoded.id);
+  if (!user) return next(new AppError('المستخدم غير موجود', 401));
+  if (!user.isActive) return next(new AppError('تم تعطيل هذا الحساب', 401));
+  if ((decoded.tv ?? 0) !== (user.tokenVersion ?? 0)) {
+    return next(new AppError('انتهت الجلسة — سجّل الدخول مرة أخرى', 401));
+  }
+  return res.status(200).json({
+    success: true,
+    message: 'تم تجديد الجلسة',
+    token: generateToken(user._id, user.tokenVersion || 0),
+    refreshToken: generateRefreshToken(user._id, user.tokenVersion || 0),
+  });
+};
+
+module.exports.refresh = refresh;

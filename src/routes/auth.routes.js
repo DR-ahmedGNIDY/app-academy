@@ -1,6 +1,6 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { login, logout, getMe, updateMe, changePassword } = require('../controllers/auth.controller');
+const { login, logout, getMe, updateMe, changePassword, refresh } = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 
@@ -11,6 +11,9 @@ router.post('/login', [
   body('password').isLength({ min: 8 }).withMessage('كلمة المرور يجب أن تكون 8 أحرف على الأقل'),
 ], validate, login);
 
+router.post('/refresh', [
+  body('refreshToken').isString().notEmpty().withMessage('رمز التجديد مطلوب'),
+], validate, refresh);
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
 

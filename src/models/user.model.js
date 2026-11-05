@@ -51,6 +51,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // يزيد عند تغيير كلمة المرور — كل التوكنات (والجلسات المحفوظة) الأقدم تُرفض.
+    tokenVersion: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
@@ -78,6 +83,7 @@ userSchema.virtual('full_name').get(function () {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
+  if (!this.isNew) this.tokenVersion = (this.tokenVersion || 0) + 1;
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });

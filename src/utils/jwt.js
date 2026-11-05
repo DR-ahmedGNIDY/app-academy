@@ -1,13 +1,14 @@
 const jwt = require('jsonwebtoken');
 
-const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+// tv = tokenVersion للمستخدم: تغيير كلمة المرور يرفع الرقم فتُرفض التوكنات القديمة.
+const generateToken = (userId, tv = 0) => {
+  return jwt.sign({ id: userId, tv }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 };
 
-const generateRefreshToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET, {
+const generateRefreshToken = (userId, tv = 0) => {
+  return jwt.sign({ id: userId, tv, type: 'refresh' }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
   });
 };
