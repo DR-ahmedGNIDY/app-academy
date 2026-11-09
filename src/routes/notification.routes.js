@@ -5,6 +5,7 @@ const {
   markAcademyNotificationRead,
   markAllAcademyRead,
 } = require('../controllers/notification.controller');
+const { registerUserToken, removeToken } = require('../controllers/deviceToken.controller');
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 
@@ -12,6 +13,10 @@ const router = express.Router();
 
 // إشعارات جهة الأكاديمية — تتطلب مصادقة مدير.
 router.use(protect);
+
+// توكن جهاز المدير/الموظف لإشعارات Push (FCM).
+router.post('/device-token', registerUserToken);
+router.delete('/device-token', removeToken);
 
 // GET   /api/v1/notifications
 router.get('/', getAcademyNotifications);

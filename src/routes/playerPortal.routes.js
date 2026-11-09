@@ -18,6 +18,7 @@ const { getPlayerStore, createPlayerOrder } = require('../controllers/store.cont
 const { getPendingRatings, createRating } = require('../controllers/trainingRating.controller');
 const { getPlayerMatches } = require('../controllers/match.controller');
 const { listPlayerTournaments, getPlayerTournament } = require('../controllers/tournament.controller');
+const { registerPlayerToken, removeToken } = require('../controllers/deviceToken.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
@@ -29,6 +30,10 @@ router.use(protectPlayer);
 
 // GET /api/v1/player/dashboard
 router.get('/dashboard', getPlayerDashboard);
+
+// ── توكن جهاز اللاعب لإشعارات Push (FCM) ──
+router.post('/device-token', registerPlayerToken);
+router.delete('/device-token', removeToken);
 
 // ── صورة اللاعب الشخصية ──
 // يعيد استخدام نفس multer/Cloudinary الخاص بصور اللاعبين (حد 2MB مطبَّق هناك).

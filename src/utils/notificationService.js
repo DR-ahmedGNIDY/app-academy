@@ -1,5 +1,6 @@
 const Notification = require('../models/notification.model');
 const logger = require('./logger');
+const { pushForNotification } = require('./pushService');
 
 // إنشاء إشعار بشكل "fire-and-forget": لا يكسر العملية الأساسية ولا يؤخّرها.
 // recipientType: 'player' → recipientId = playerId
@@ -18,6 +19,8 @@ const notify = ({ recipientType, recipientId, academyId, type, title, body = '',
     }).catch((err) => {
       logger.warn(`[NOTIFY] failed to create ${type}: ${err.message}`);
     });
+    // Push للجهاز (إن كان Firebase مُعدّاً) — بالتوازي ولا يؤثر على الإشعار داخل التطبيق.
+    pushForNotification({ recipientType, recipientId, type, title, body, meta });
   } catch (err) {
     logger.warn(`[NOTIFY] notify error: ${err.message}`);
   }
