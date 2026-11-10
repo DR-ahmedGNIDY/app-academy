@@ -4,6 +4,7 @@ const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notify } = require('../utils/notificationService');
 
 // نفس نمط المجموعات/اللاعبين: super_admin وحده يمرّر academyId صراحةً،
 // وكل من عداه مُقيَّد حتمياً بأكاديميته.
@@ -217,6 +218,21 @@ const toggleLike = async (req, res, next) => {
   });
 };
 
+// إشعار للأكاديمية عند تعليق لاعب (تعليقات الإدارة نفسها لا تُشعِر أحداً).
+const albumCommentNotification = (item, requester, text) => {
+  if (requester.userType !== 'player') return null;
+  const name = requester.name || 'لاعب';
+  return {
+    recipientType: 'academy',
+    recipientId: item.academyId,
+    academyId: item.academyId,
+    type: 'ALBUM_COMMENT',
+    title: `تعليق جديد من ${name} على صورة في الألبوم`,
+    body: text.length > 80 ? text.slice(0, 80) + '…' : text,
+    meta: { albumItemId: item._id.toString(), playerId: String(requester.userId) },
+  };
+};
+
 // ─── POST /:id/comments (إضافة تعليق — لاعب أو حساب إداري) ───────────────────
 const addComment = async (req, res, next) => {
   const item = await AcademyAlbum.findById(req.params.id);
@@ -235,6 +251,9 @@ const addComment = async (req, res, next) => {
     text,
   });
   await item.save();
+
+  const n = albumCommentNotification(item, requester, text);
+  if (n) notify(n);
 
   return sendSuccess(res, {
     data: toClientItem(item, requester),
@@ -279,4 +298,5 @@ module.exports = {
   toggleLike,
   addComment,
   deleteComment,
+  albumCommentNotification,
 };

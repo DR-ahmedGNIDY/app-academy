@@ -2,21 +2,23 @@ const Notification = require('../models/notification.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 
-// أنواع إشعارات تُنشأ في الـ backend لكنها لا تُعرض في مركز إشعارات النظام.
-// إشعارات الرسائل (NEW_MESSAGE) محجوزة لـ Push Notifications مستقبلاً؛ داخل
-// التطبيق تُعرض عبر شاشة المحادثات وعدّاد unread الخاص بها، لا هنا.
-const HIDDEN_FROM_CENTER = ['NEW_MESSAGE'];
-const centerFilter = (recipientType, recipientId) => ({
-  recipientType,
-  recipientId,
-  type: { $nin: HIDDEN_FROM_CENTER },
-});
+// أنواع إشعارات لا تُعرض في مركز الإشعارات، حسب المستلم.
+// - اللاعب: رسائل الأكاديمية تظهر في شاشة المحادثة وعدّادها، لا هنا.
+// - الأكاديمية: رسائل اللاعبين تظهر هنا (إشعار واحد مجمّع لكل محادثة).
+const HIDDEN_FROM_CENTER = { player: ['NEW_MESSAGE'], academy: [] };
+const hiddenTypesFor = (recipientType) => HIDDEN_FROM_CENTER[recipientType] || [];
+const centerFilter = (recipientType, recipientId) => {
+  const hidden = hiddenTypesFor(recipientType);
+  return hidden.length
+    ? { recipientType, recipientId, type: { $nin: hidden } }
+    : { recipientType, recipientId };
+};
 
 // جلب قائمة إشعارات + عدد غير المقروء لمستلم مُحدَّد.
 const listFor = async (recipientType, recipientId, res) => {
   const base = centerFilter(recipientType, recipientId);
   const [items, unread] = await Promise.all([
-    Notification.find(base).sort({ createdAt: -1 }).limit(100),
+    Notification.find(base).sort({ createdAt: -1 }).limit(50),
     Notification.countDocuments({ ...base, isRead: false }),
   ]);
   return sendSuccess(res, {
@@ -79,6 +81,8 @@ const markAllPlayerRead = async (req, res) => {
 };
 
 module.exports = {
+  hiddenTypesFor,
+  centerFilter,
   getAcademyNotifications,
   markAcademyNotificationRead,
   markAllAcademyRead,

@@ -180,14 +180,14 @@ const playerSendMessage = async (req, res, next) => {
   convo.unreadForAcademy += 1;
   await convo.save();
 
-  // نُنشئ إشعار NEW_MESSAGE للاستخدام المستقبلي (Push Notifications)، لكنه
-  // مُستبعَد من مركز إشعارات النظام في العرض (انظر notification.controller).
-  // عدّاد رسائل المدير مصدره unreadForAcademy وحده، لا مركز الإشعارات.
+  // إشعار للأكاديمية (مركز الإشعارات + Push). رسائل نفس اللاعب المتتالية
+  // تُجمَّع في إشعار واحد غير مقروء عبر groupKey.
   notify({
+    groupKey: `chat:${convo._id}`,
     recipientType: 'academy', recipientId: player.academyId, academyId: player.academyId,
     type: 'NEW_MESSAGE', title: `رسالة جديدة من ${player.fullName}`,
     body: text.length > 80 ? text.slice(0, 80) + '…' : text,
-    meta: { conversationId: convo._id.toString(), playerId: player._id.toString() },
+    meta: { conversationId: convo._id.toString(), playerId: player._id.toString(), playerName: player.fullName },
   });
 
   return sendSuccess(res, {

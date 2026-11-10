@@ -35,6 +35,7 @@ const notificationSchema = new mongoose.Schema(
         'MATCH_ADDED',
         'TOURNAMENT_SCHEDULED',
         'TOURNAMENT_RESULT',
+        'ALBUM_COMMENT',
       ],
       required: true,
     },
