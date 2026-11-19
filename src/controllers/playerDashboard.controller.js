@@ -5,6 +5,7 @@ const Notification = require('../models/notification.model');
 const Conversation = require('../models/conversation.model');
 const Academy = require('../models/academy.model');
 const { sendSuccess } = require('../utils/apiResponse');
+const { paymentState, REMAINING_EXPR, round2 } = require('../utils/subscriptionPayments');
 
 const daysBetween = (future) => {
   if (!future) return 0;
@@ -40,9 +41,16 @@ const getPlayerDashboard = async (req, res, next) => {
       // GET /academies/:id وهو مسار محمي بـ protect (مدراء فقط) — فيردّ 401
       // لتوكن اللاعب. نعيدها هنا ضمن حمولة اللاعب بدل ذلك.
       Academy.findById(academyId).select(
-        'name websiteUrl facebookUrl tiktokUrl instagramUrl'
+        'name websiteUrl facebookUrl tiktokUrl instagramUrl currency'
       ),
     ]);
+
+  // الدفع الجزئي: إجمالي المتبقي على اللاعب من كل اشتراكاته (القديم = مدفوع).
+  const [due] = await Subscription.aggregate([
+    { $match: { playerId, paidAmount: { $ne: null } } },
+    { $group: { _id: null, total: { $sum: REMAINING_EXPR } } },
+  ]);
+  const balance = { totalDue: round2(due?.total ?? 0) };
 
   const subscription = latestSub
     ? {
@@ -50,6 +58,7 @@ const getPlayerDashboard = async (req, res, next) => {
         startDate: latestSub.startDate,
         endDate: latestSub.endDate,
         amount: latestSub.amount,
+        ...paymentState(latestSub),
         isActive: !latestSub.exhaustedAt && new Date() <= latestSub.endDate,
         sessionsLimit: latestSub.sessionsLimit || null,
         exhaustedAt: latestSub.exhaustedAt || null,
@@ -74,6 +83,7 @@ const getPlayerDashboard = async (req, res, next) => {
         facebookUrl: academy?.facebookUrl || '',
         tiktokUrl: academy?.tiktokUrl || '',
         instagramUrl: academy?.instagramUrl || '',
+        currency: academy?.currency || 'EGP',
       },
       player: {
         _id: playerId.toString(),
@@ -98,6 +108,8 @@ const getPlayerDashboard = async (req, res, next) => {
         })),
       },
       subscription,
+      // المتبقي على اللاعب (الدفع الجزئي) — إضافة بحتة.
+      balance,
       evaluations: evaluations.map((e) => ({
         _id: e._id.toString(),
         evaluationDate: e.evaluationDate,
