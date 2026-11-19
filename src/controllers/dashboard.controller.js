@@ -3,6 +3,12 @@ const Player = require('../models/player.model');
 const Subscription = require('../models/subscription.model');
 const Evaluation = require('../models/evaluation.model');
 const { matchRevenueTotal } = require('../utils/matchRevenue');
+const {
+  collectedTotalStages,
+  outstandingTotalStages,
+  unwindPaymentsStages,
+  round2,
+} = require('../utils/subscriptionPayments');
 const Activity = require('../models/activity.model');
 const Group = require('../models/group.model');
 const Expense = require('../models/expense.model');
@@ -72,13 +78,10 @@ const getDashboardStats = async (req, res, next) => {
             { $match: { maxEndDate: { $lt: now } } },
             { $count: 'count' },
           ],
-          totalRevenue: [
-            { $group: { _id: null, total: { $sum: '$amount' } } },
-          ],
-          currentMonthRevenue: [
-            { $match: { created_at: { $gte: startOfMonth, $lte: endOfMonth } } },
-            { $group: { _id: null, total: { $sum: '$amount' } } },
-          ],
+          // الإيراد = المُحصَّل فعلاً بتاريخ الدفع (الدفع الجزئي)؛ القديم = كامل المبلغ.
+          totalRevenue: collectedTotalStages(),
+          currentMonthRevenue: collectedTotalStages({ from: startOfMonth, to: endOfMonth }),
+          outstanding: outstandingTotalStages(),
           newSubscriptionsCount: [
             { $match: { type: 'NEW_SUBSCRIPTION' } },
             { $count: 'count' },
@@ -203,6 +206,7 @@ const getDashboardStats = async (req, res, next) => {
       totalRevenue: (totalRevDoc.total || 0) + matchRevTotal,
       currentMonthRevenue: (monthRevDoc.total || 0) + matchRevMonth,
       matchRevenue: matchRevTotal,
+      outstandingTotal: round2(extract(subs.outstanding).total || 0),
       newSubscriptionsCount: newSubsDoc.count || 0,
       renewalsCount: renewalsDoc.count || 0,
       averageEvaluationScore: Math.round((evalStats.averageEvaluationScore || 0) * 100) / 100,
@@ -227,23 +231,39 @@ const getRevenueByMonth = async (req, res, next) => {
 
   const matchWithDate = { ...match, created_at: { $gte: twelveMonthsAgo } };
 
-  const results = await Subscription.aggregate([
-    { $match: matchWithDate },
-    {
-      $group: {
-        _id: { year: { $year: '$created_at' }, month: { $month: '$created_at' } },
-        revenue: { $sum: '$amount' },
-        count: { $sum: 1 },
+  // count = عدد الاشتراكات المُنشأة في الشهر؛ revenue = المُحصَّل بتاريخ الدفع.
+  const [countRows, revenueRows] = await Promise.all([
+    Subscription.aggregate([
+      { $match: matchWithDate },
+      {
+        $group: {
+          _id: { year: { $year: '$created_at' }, month: { $month: '$created_at' } },
+          count: { $sum: 1 },
+        },
       },
-    },
-    { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]),
+    Subscription.aggregate([
+      { $match: match },
+      ...unwindPaymentsStages(),
+      { $match: { '_pay.date': { $gte: twelveMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$_pay.date' }, month: { $month: '$_pay.date' } },
+          revenue: { $sum: '$_pay.amount' },
+        },
+      },
+    ]),
   ]);
 
   // Build a map of existing data
   const dataMap = {};
-  for (const item of results) {
-    const key = `${item._id.year}-${String(item._id.month).padStart(2, '0')}`;
-    dataMap[key] = { revenue: item.revenue, count: item.count };
+  const keyOf = (id) => `${id.year}-${String(id.month).padStart(2, '0')}`;
+  for (const item of countRows) {
+    dataMap[keyOf(item._id)] = { revenue: 0, count: item.count };
+  }
+  for (const item of revenueRows) {
+    const key = keyOf(item._id);
+    dataMap[key] = { revenue: item.revenue, count: dataMap[key]?.count ?? 0 };
   }
 
   // Fill all 12 months
@@ -417,7 +437,7 @@ const getSportStats = async (req, res, next) => {
             { $match: { maxEndDate: { $lt: now } } },
             { $count: 'count' },
           ],
-          revenue: [{ $group: { _id: null, total: { $sum: '$amount' } } }],
+          revenue: collectedTotalStages(),
         },
       },
     ]),

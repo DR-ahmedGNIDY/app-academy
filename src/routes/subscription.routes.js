@@ -9,7 +9,11 @@ const {
   getSubscriptionsByAcademy,
   getAcademyPlayerStatusMap,
   getRevenueSummary,
+  addPayment,
+  deletePayment,
+  getAcademyDebts,
 } = require('../controllers/subscription.controller');
+const { PAYMENT_METHODS } = require('../utils/subscriptionPayments');
 const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
@@ -58,6 +62,28 @@ const createValidators = [
   body('academyId')
     .optional()
     .isMongoId().withMessage('معرّف الأكاديمية غير صحيح'),
+  // الدفع الجزئي — غير مُرسل ⇒ مدفوع بالكامل.
+  body('paidAmount')
+    .optional({ nullable: true })
+    .isFloat({ min: 0 }).withMessage('المبلغ المدفوع غير صحيح'),
+  body('paymentMethod')
+    .optional({ nullable: true })
+    .isIn(PAYMENT_METHODS).withMessage('طريقة الدفع غير صحيحة'),
+];
+
+const paymentValidators = [
+  body('amount')
+    .notEmpty().withMessage('مبلغ الدفعة مطلوب')
+    .isFloat({ gt: 0 }).withMessage('مبلغ الدفعة يجب أن يكون أكبر من صفر'),
+  body('method')
+    .optional({ nullable: true })
+    .isIn(PAYMENT_METHODS).withMessage('طريقة الدفع غير صحيحة'),
+  body('date')
+    .optional({ nullable: true })
+    .isISO8601().withMessage('تاريخ الدفعة غير صحيح'),
+  body('note')
+    .optional({ nullable: true })
+    .isLength({ max: 200 }).withMessage('ملاحظة الدفعة طويلة جداً'),
 ];
 
 const notesValidators = [
@@ -77,6 +103,9 @@ router.get('/academy/:academyId/player-status', restrictTo('super_admin', 'acade
 // GET  /subscriptions/academy/:academyId/revenue — admin needs view_dashboard_revenue permission
 router.get('/academy/:academyId/revenue', requirePermission('view_dashboard_revenue'), getRevenueSummary);
 
+// GET  /subscriptions/academy/:academyId/debts — اللاعبون عليهم مبالغ متبقية
+router.get('/academy/:academyId/debts', requirePermission('record_subscriptions'), getAcademyDebts);
+
 // GET  /subscriptions/academy/:academyId — admin blocked (uses player-level access instead)
 router.get('/academy/:academyId', restrictTo('super_admin', 'academy_admin'), getSubscriptionsByAcademy);
 
@@ -85,6 +114,12 @@ router.get('/:id', getSubscriptionById);
 
 // POST /subscriptions
 router.post('/', requirePermission('record_subscriptions'), createValidators, validate, createSubscription);
+
+// POST   /subscriptions/:id/payments — تسجيل دفعة (قسط)
+router.post('/:id/payments', requirePermission('record_subscriptions'), paymentValidators, validate, addPayment);
+
+// DELETE /subscriptions/:id/payments/:paymentId — حذف دفعة مسجّلة بالخطأ
+router.delete('/:id/payments/:paymentId', requirePermission('record_subscriptions'), deletePayment);
 
 // PATCH /subscriptions/:id/notes
 router.patch('/:id/notes', notesValidators, validate, updateSubscriptionNotes);

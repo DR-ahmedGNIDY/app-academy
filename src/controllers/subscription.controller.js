@@ -5,6 +5,27 @@ const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { notify } = require('../utils/notificationService');
+const {
+  PAYMENT_METHODS,
+  round2,
+  paymentState,
+  validatePaymentAmount,
+  resolveInitialPaid,
+  collectedTotalStages,
+  outstandingTotalStages,
+  groupDebtsByPlayer,
+} = require('../utils/subscriptionPayments');
+
+/** بيانات من سجّل الدفعة (للعرض في السجل). */
+function recorderOf(req) {
+  return { recordedBy: req.user?._id ?? null, recordedByName: req.user?.name ?? '' };
+}
+
+/** يتحقّق أن الاشتراك يخص أكاديمية المستخدم (super_admin يتجاوز). */
+function canAccessSubscription(req, subscription) {
+  return req.user.role === 'super_admin' ||
+    subscription.academyId.toString() === req.user.academyId?.toString();
+}
 
 // ─── Helper: resolve and verify academyId access ────────────────────────────
 /**
@@ -22,6 +43,10 @@ function resolveAcademyId(req, paramAcademyId) {
 // ─── POST / ──────────────────────────────────────────────────────────────────
 const createSubscription = async (req, res, next) => {
   const { playerId, type, amount, startDate, endDate, notes } = req.body;
+  // الدفع الجزئي: paidAmount غير مُرسل ⇒ مدفوع بالكامل (توافق مع التطبيقات القديمة).
+  const initial = resolveInitialPaid(amount, req.body.paidAmount);
+  if (initial.error) return next(new AppError(initial.error, 400));
+  const paymentMethod = PAYMENT_METHODS.includes(req.body.paymentMethod) ? req.body.paymentMethod : 'cash';
   // عدد الحصص: القيمة المرسلة (null/فارغ = بلا حدّ)، وإن لم تُرسل فالافتراضي المحفوظ على اللاعب.
   const rawLimit = req.body.sessionsLimit;
 
@@ -58,6 +83,10 @@ const createSubscription = async (req, res, next) => {
     startDate,
     endDate,
     notes,
+    paidAmount: initial.paid,
+    payments: initial.paid > 0
+      ? [{ amount: initial.paid, date: new Date(), method: paymentMethod, ...recorderOf(req) }]
+      : [],
     sessionsLimit: rawLimit === undefined
       ? (player.sessionsLimit || null)
       : (parseInt(rawLimit, 10) > 0 ? parseInt(rawLimit, 10) : null),
@@ -303,6 +332,118 @@ const getAcademyPlayerStatusMap = async (req, res, next) => {
   });
 };
 
+// ─── POST /:id/payments ──────────────────────────────────────────────────────
+/** تسجيل دفعة على اشتراك (قسط / سداد المتبقي). */
+const addPayment = async (req, res, next) => {
+  const subscription = await Subscription.findById(req.params.id);
+  if (!subscription) return next(new AppError('الاشتراك غير موجود', 404));
+  if (!canAccessSubscription(req, subscription)) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا الاشتراك', 403));
+  }
+
+  const { remainingAmount, paidAmount } = paymentState(subscription);
+  const amount = round2(req.body.amount);
+  const error = validatePaymentAmount(req.body.amount, remainingAmount);
+  if (error) return next(new AppError(error, 400));
+
+  const method = PAYMENT_METHODS.includes(req.body.method) ? req.body.method : 'cash';
+  const date = req.body.date ? new Date(req.body.date) : new Date();
+  if (Number.isNaN(date.getTime())) return next(new AppError('تاريخ الدفعة غير صحيح', 400));
+
+  // اشتراك قديم بلا سجل دفعات: نثبّت المدفوع السابق كدفعة أولى قبل الإضافة.
+  if (!Array.isArray(subscription.payments)) {
+    subscription.payments = paidAmount > 0
+      ? [{ amount: paidAmount, date: subscription.created_at, method: 'cash', note: 'رصيد سابق' }]
+      : [];
+  }
+  subscription.payments.push({
+    amount, date, method,
+    note: req.body.note ? String(req.body.note).slice(0, 200) : undefined,
+    ...recorderOf(req),
+  });
+  subscription.paidAmount = round2(paidAmount + amount);
+  await subscription.save();
+
+  const player = await Player.findById(subscription.playerId).select('fullName');
+  logger.info(`Payment ${amount} recorded on subscription ${subscription._id}`);
+  logActivity(req, {
+    actionType: 'ADD_PAYMENT', entityType: 'SUBSCRIPTION',
+    entityId: subscription._id, entityName: player ? player.fullName : '',
+    academyId: subscription.academyId,
+  });
+
+  return sendSuccess(res, { data: subscription, message: 'تم تسجيل الدفعة بنجاح', statusCode: 201 });
+};
+
+// ─── DELETE /:id/payments/:paymentId ─────────────────────────────────────────
+/** حذف دفعة مسجّلة بالخطأ — يرجع مبلغها للمتبقي. */
+const deletePayment = async (req, res, next) => {
+  const subscription = await Subscription.findById(req.params.id);
+  if (!subscription) return next(new AppError('الاشتراك غير موجود', 404));
+  if (!canAccessSubscription(req, subscription)) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا الاشتراك', 403));
+  }
+
+  const payment = subscription.payments?.id(req.params.paymentId);
+  if (!payment) return next(new AppError('الدفعة غير موجودة', 404));
+
+  payment.deleteOne();
+  subscription.paidAmount = round2(
+    subscription.payments.reduce((sum, p) => sum + (p.amount || 0), 0)
+  );
+  await subscription.save();
+
+  const player = await Player.findById(subscription.playerId).select('fullName');
+  logActivity(req, {
+    actionType: 'DELETE_PAYMENT', entityType: 'SUBSCRIPTION',
+    entityId: subscription._id, entityName: player ? player.fullName : '',
+    academyId: subscription.academyId,
+  });
+
+  return sendSuccess(res, { data: subscription, message: 'تم حذف الدفعة' });
+};
+
+// ─── GET /academy/:academyId/debts ───────────────────────────────────────────
+/**
+ * اللاعبون الذين عليهم مبالغ متبقية، مجمّعين لكل لاعب ومرتّبين بالأكبر.
+ * ?search= يفلتر بالاسم أو الكود.
+ */
+const getAcademyDebts = async (req, res, next) => {
+  const academyId = resolveAcademyId(req, req.params.academyId);
+  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+  if (req.user.role !== 'super_admin' && req.params.academyId &&
+      req.params.academyId !== academyId) {
+    return next(new AppError('ليس لديك صلاحية للوصول إلى هذه الأكاديمية', 403));
+  }
+
+  // paidAmount موجود فقط للاشتراكات الجديدة؛ القديم مدفوع بالكامل فلا يدخل هنا.
+  const subs = await Subscription.find({
+    academyId,
+    paidAmount: { $ne: null },
+    $expr: { $gt: ['$amount', '$paidAmount'] },
+  })
+    .select('playerId type amount paidAmount startDate endDate')
+    .populate('playerId', 'fullName playerCode parentPhone playerPhone image_url isActive')
+    .lean();
+
+  let result = groupDebtsByPlayer(subs);
+  const search = (req.query.search || '').toString().trim().toLowerCase();
+  if (search) {
+    const players = result.players.filter((p) =>
+      p.fullName.toLowerCase().includes(search) || String(p.playerCode).toLowerCase().includes(search));
+    result = {
+      players,
+      summary: {
+        totalOutstanding: round2(players.reduce((sum, p) => sum + p.totalDue, 0)),
+        playersCount: players.length,
+        subscriptionsCount: players.reduce((sum, p) => sum + p.subscriptions.length, 0),
+      },
+    };
+  }
+
+  return sendSuccess(res, { data: result, message: 'تم جلب المديونيات بنجاح' });
+};
+
 // ─── GET /academy/:academyId/revenue ─────────────────────────────────────────
 const getRevenueSummary = async (req, res, next) => {
   // Resolve academy
@@ -328,17 +469,10 @@ const getRevenueSummary = async (req, res, next) => {
     { $match: { academyId: academyObjectId } },
     {
       $facet: {
-        totalRevenue: [
-          { $group: { _id: null, total: { $sum: '$amount' } } },
-        ],
-        monthlyRevenue: [
-          {
-            $match: {
-              created_at: { $gte: startOfMonth, $lte: endOfMonth },
-            },
-          },
-          { $group: { _id: null, total: { $sum: '$amount' } } },
-        ],
+        // الإيراد = المُحصَّل فعلاً بتاريخ الدفع (القديم = كامل المبلغ يوم الإنشاء).
+        totalRevenue: collectedTotalStages(),
+        monthlyRevenue: collectedTotalStages({ from: startOfMonth, to: endOfMonth }),
+        outstanding: outstandingTotalStages(),
         newSubscriptionsCount: [
           { $match: { type: 'NEW_SUBSCRIPTION' } },
           { $count: 'count' },
@@ -374,6 +508,7 @@ const getRevenueSummary = async (req, res, next) => {
     totalRevenue: (summary?.totalRevenue?.[0]?.total ?? 0) + matchRevTotal,
     monthlyRevenue: (summary?.monthlyRevenue?.[0]?.total ?? 0) + matchRevMonth,
     matchRevenue: matchRevTotal,
+    outstandingTotal: round2(summary?.outstanding?.[0]?.total ?? 0),
     newSubscriptionsCount: summary?.newSubscriptionsCount?.[0]?.count ?? 0,
     renewalsCount: summary?.renewalsCount?.[0]?.count ?? 0,
     activeCount: summary?.activeCount?.[0]?.count ?? 0,
@@ -395,4 +530,7 @@ module.exports = {
   getSubscriptionsByAcademy,
   getAcademyPlayerStatusMap,
   getRevenueSummary,
+  addPayment,
+  deletePayment,
+  getAcademyDebts,
 };
