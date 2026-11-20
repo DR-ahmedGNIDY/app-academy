@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { notify } = require('../utils/notificationService');
 const escapeRegex = require('../utils/escapeRegex');
+const { activeFreeze, planResume, frozenDayRanges } = require('../utils/subscriptionFreeze');
 
 // أسماء أيام الأسبوع العربية مرتبطة بـ Date.getDay() (0 = الأحد ... 6 = السبت)
 // مطابقة تماماً للقيم المخزّنة في player.attendanceDays و SportsConstants.weekDays.
@@ -108,6 +109,27 @@ const recordAttendance = async (req, res, next) => {
       },
       message: 'اشتراك اللاعب منتهي',
     });
+  }
+
+  // 3ب) اشتراك مجمّد الآن: اللاعب رجع للتمرين.
+  //  - الواجهة الجديدة (freezeAware) تعرض تنبيهاً أولاً؛ unfreeze=true ⇒ فك ثم تسجيل.
+  //  - النسخ القديمة لا تعرف التجميد ⇒ فك تلقائي ثم تسجيل (لا ترى رداً غير مفهوم).
+  if (!subscriptionExpired && activeFreeze(latestSubscription)) {
+    if (req.body.freezeAware === true && req.body.unfreeze !== true) {
+      return sendSuccess(res, {
+        data: {
+          recorded: false,
+          alreadyToday: false,
+          subscriptionExpired: false,
+          frozen: true,
+          frozenUntil: activeFreeze(latestSubscription).endDate,
+          player: playerSummary(player),
+        },
+        message: 'اشتراك اللاعب مجمّد',
+      });
+    }
+    await require('./subscription.controller').applyResume(latestSubscription);
+    logger.info(`[ATTENDANCE] auto-unfroze subscription ${latestSubscription._id} on check-in`);
   }
 
   // الخيارات الخاصة تُقبل فقط لاشتراك منتهي؛ مع اشتراك نشط يكون الحضور عادياً.
@@ -256,6 +278,17 @@ const expectedInRange = (days, startStr, endStr) => {
   return days.reduce((sum, d) => sum + (counts[d] || 0), 0);
 };
 
+// نفس السابق مع استبعاد أيام التجميد (أيام التجميد لا تُحسب غياباً).
+const expectedExcludingFreezes = (days, startStr, endStr, sub) => {
+  let total = expectedInRange(days, startStr, endStr);
+  for (const r of frozenDayRanges(sub || {})) {
+    const from = r.fromStr > startStr ? r.fromStr : startStr;
+    const to = r.toStr < endStr ? r.toStr : endStr;
+    if (from <= to) total -= expectedInRange(days, from, to);
+  }
+  return Math.max(total, 0);
+};
+
 // آخر اشتراك للاعب (الأحدث تاريخ انتهاء). "نشط" ⇔ endDate >= الآن.
 // لو منتهي فهو "الاشتراك السابق" = آخر اشتراك كان نشطاً للاعب.
 const latestSubscriptionOf = (playerId) =>
@@ -395,7 +428,7 @@ const subscriptionStats = async (player, sub) => {
     ],
   }).select(COUNT_FIELDS).lean();
   const present = records.filter((r) => countsFor(r, S)).length;
-  const expected = expectedInRange(days, startStr, countUntil);
+  const expected = expectedExcludingFreezes(days, startStr, countUntil, sub);
   return {
     status: active ? 'active' : 'expired',
     subscription: { id: sub._id.toString(), type: sub.type, startDate: startStr, endDate: dateToStr(sub.endDate) },
@@ -404,7 +437,7 @@ const subscriptionStats = async (player, sub) => {
     present,
     absent: Math.max(expected - present, 0),
     expected,
-    expectedTotal: expectedInRange(days, startStr, endStr),
+    expectedTotal: expectedExcludingFreezes(days, startStr, endStr, sub),
   };
 };
 
@@ -434,7 +467,7 @@ const getAttendanceReport = async (req, res, next) => {
   // (أ) الاشتراك النشط لكل لاعب = أحدث اشتراك (أبعد endDate) لم ينتهِ بعد.
   // نفس تعريف شاشة المسح (latestSubscriptionOf): آخر اشتراك endDate >= الآن.
   const activeSubs = await Subscription.find({ academyId, endDate: { $gte: now }, exhaustedAt: null })
-    .select('playerId type startDate endDate sessionsLimit')
+    .select('playerId type startDate endDate sessionsLimit freezes')
     .sort({ endDate: -1 })
     .lean();
   const activeSubMap = {};
@@ -536,8 +569,8 @@ const getAttendanceReport = async (req, res, next) => {
     const endStr = S.end;
     const countUntil = today < endStr ? today : endStr;
     const present = (recordsByPlayer[id] || []).filter((r) => countsFor(r, S)).length;
-    const expected = expectedInRange(days, startStr, countUntil);
-    const expectedTotal = expectedInRange(days, startStr, endStr);
+    const expected = expectedExcludingFreezes(days, startStr, countUntil, sub);
+    const expectedTotal = expectedExcludingFreezes(days, startStr, endStr, sub);
     const absent = Math.max(expected - present, 0);
     const rate = expected > 0
       ? Math.min(100, Math.round((present / expected) * 100))

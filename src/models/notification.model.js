@@ -29,6 +29,7 @@ const notificationSchema = new mongoose.Schema(
         'ATTENDANCE_ABSENT',
         'EVALUATION_ADDED',
         'SUBSCRIPTION_RENEWED',
+        'SUBSCRIPTION_FROZEN',
         'SUBSCRIPTION_EXPIRING',
         'SESSIONS_EXHAUSTED',
         'TRAINING_RATING_REQUEST',

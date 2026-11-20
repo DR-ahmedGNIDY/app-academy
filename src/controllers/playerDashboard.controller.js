@@ -6,6 +6,7 @@ const Conversation = require('../models/conversation.model');
 const Academy = require('../models/academy.model');
 const { sendSuccess } = require('../utils/apiResponse');
 const { paymentState, REMAINING_EXPR, round2 } = require('../utils/subscriptionPayments');
+const { freezeState } = require('../utils/subscriptionFreeze');
 
 const daysBetween = (future) => {
   if (!future) return 0;
@@ -59,6 +60,8 @@ const getPlayerDashboard = async (req, res, next) => {
         endDate: latestSub.endDate,
         amount: latestSub.amount,
         ...paymentState(latestSub),
+        // التجميد: frozen | scheduled | null + currentFreeze { startDate, endDate, days }.
+        ...freezeState(latestSub),
         isActive: !latestSub.exhaustedAt && new Date() <= latestSub.endDate,
         sessionsLimit: latestSub.sessionsLimit || null,
         exhaustedAt: latestSub.exhaustedAt || null,

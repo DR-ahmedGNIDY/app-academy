@@ -14,7 +14,10 @@ const {
   getAcademyDebts,
   getPaymentReceipt,
   shareReceiptImage,
+  freezeSubscription,
+  resumeSubscription,
 } = require('../controllers/subscription.controller');
+const { FREEZE_REASONS, MAX_FREEZE_DAYS } = require('../utils/subscriptionFreeze');
 const multer = require('multer');
 
 // صورة الإيصال للمشاركة: في الذاكرة ثم Cloudinary من الـ controller
@@ -131,6 +134,23 @@ router.post('/', requirePermission('record_subscriptions'), createValidators, va
 
 // POST   /subscriptions/:id/payments — تسجيل دفعة (قسط)
 router.post('/:id/payments', requirePermission('record_subscriptions'), paymentValidators, validate, addPayment);
+
+// POST   /subscriptions/:id/freeze — تجميد عدد أيام (يمدّد نهاية الاشتراك)
+router.post(
+  '/:id/freeze',
+  requirePermission('record_subscriptions'),
+  [
+    body('days').isInt({ min: 1, max: MAX_FREEZE_DAYS }).withMessage('عدد أيام التجميد غير صحيح'),
+    body('startDate').optional({ nullable: true }).matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('تاريخ بداية التجميد غير صحيح'),
+    body('reason').optional({ nullable: true }).isIn(FREEZE_REASONS).withMessage('سبب التجميد غير صحيح'),
+    body('note').optional({ nullable: true }).isLength({ max: 200 }).withMessage('الملاحظة طويلة جداً'),
+  ],
+  validate,
+  freezeSubscription
+);
+
+// POST   /subscriptions/:id/freeze/resume — فك التجميد الآن
+router.post('/:id/freeze/resume', requirePermission('record_subscriptions'), resumeSubscription);
 
 // GET    /subscriptions/:id/payments/:paymentId/receipt — بيانات إيصال الدفع
 router.get('/:id/payments/:paymentId/receipt', getPaymentReceipt);

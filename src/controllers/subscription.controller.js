@@ -41,6 +41,27 @@ const uploadImageBuffer = (buffer, options) => new Promise((resolve, reject) => 
   stream.end(buffer);
 });
 
+const { planFreeze, planResume } = require('../utils/subscriptionFreeze');
+
+/**
+ * يطبّق فك التجميد على اشتراك ويحفظه (مشترك مع شاشة مسح الحضور).
+ * يرجّع { usedDays, returnedDays } أو { error }.
+ */
+async function applyResume(subscription, now = new Date()) {
+  const plan = planResume(subscription, now);
+  if (plan.error) return { error: plan.error };
+  if (plan.remove) {
+    plan.freeze.deleteOne();
+  } else {
+    plan.freeze.days = plan.usedDays;
+    plan.freeze.endDate = plan.newFreezeEnd;
+    plan.freeze.endedEarlyAt = now;
+  }
+  subscription.endDate = plan.newEndDate;
+  await subscription.save();
+  return { usedDays: plan.usedDays, returnedDays: plan.returnedDays };
+}
+
 /** رقم الإيصال التالي لأكاديمية (ذرّي). */
 const nextReceiptNo = (academyId) => Counter.next(receiptCounterName(academyId));
 
@@ -468,6 +489,85 @@ const deletePayment = async (req, res, next) => {
   return sendSuccess(res, { data: subscription, message: 'تم حذف الدفعة' });
 };
 
+// ─── POST /:id/freeze ────────────────────────────────────────────────────────
+/**
+ * تجميد الاشتراك عدد أيام (إصابة/سفر…). يمدّد نهاية الاشتراك فوراً بعدد الأيام،
+ * ولا تُحسب أيام التجميد غياباً. body: { days, startDate?, reason?, note? }
+ */
+const freezeSubscription = async (req, res, next) => {
+  const subscription = await Subscription.findById(req.params.id);
+  if (!subscription) return next(new AppError('الاشتراك غير موجود', 404));
+  if (!canAccessSubscription(req, subscription)) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا الاشتراك', 403));
+  }
+
+  const plan = planFreeze(subscription, {
+    days: req.body.days,
+    startDate: req.body.startDate,
+    reason: req.body.reason,
+  });
+  if (plan.error) return next(new AppError(plan.error, 400));
+
+  if (!Array.isArray(subscription.freezes)) subscription.freezes = [];
+  subscription.freezes.push({
+    ...plan.freeze,
+    note: req.body.note ? String(req.body.note).slice(0, 200) : undefined,
+    createdByName: req.user?.name ?? '',
+  });
+  subscription.endDate = plan.newEndDate;
+  await subscription.save();
+
+  const player = await Player.findById(subscription.playerId).select('fullName');
+  logActivity(req, {
+    actionType: 'FREEZE_SUBSCRIPTION', entityType: 'SUBSCRIPTION',
+    entityId: subscription._id, entityName: player ? player.fullName : '',
+    academyId: subscription.academyId,
+  });
+  const fmt = (dt) => new Date(dt).toLocaleDateString('ar-EG');
+  notify({
+    recipientType: 'player', recipientId: subscription.playerId, academyId: subscription.academyId,
+    type: 'SUBSCRIPTION_FROZEN',
+    title: 'تم تجميد اشتراكك',
+    body: `مجمّد ${plan.freeze.days} يوم (${fmt(plan.freeze.startDate)} - ${fmt(new Date(plan.freeze.endDate.getTime() - 1))}) — الاشتراك ساري حتى ${fmt(plan.newEndDate)}`,
+    meta: { subscriptionId: subscription._id.toString() },
+  });
+
+  return sendSuccess(res, { data: subscription, message: 'تم تجميد الاشتراك' });
+};
+
+// ─── POST /:id/freeze/resume ─────────────────────────────────────────────────
+/** فك التجميد الآن — تُحتسب الأيام المجمّدة فعلاً وترجع البقية لنهاية الاشتراك. */
+const resumeSubscription = async (req, res, next) => {
+  const subscription = await Subscription.findById(req.params.id);
+  if (!subscription) return next(new AppError('الاشتراك غير موجود', 404));
+  if (!canAccessSubscription(req, subscription)) {
+    return next(new AppError('ليس لديك صلاحية لتعديل هذا الاشتراك', 403));
+  }
+  const result = await applyResume(subscription);
+  if (result.error) return next(new AppError(result.error, 400));
+
+  const player = await Player.findById(subscription.playerId).select('fullName');
+  logActivity(req, {
+    actionType: 'UNFREEZE_SUBSCRIPTION', entityType: 'SUBSCRIPTION',
+    entityId: subscription._id, entityName: player ? player.fullName : '',
+    academyId: subscription.academyId,
+  });
+  notify({
+    recipientType: 'player', recipientId: subscription.playerId, academyId: subscription.academyId,
+    type: 'SUBSCRIPTION_FROZEN',
+    title: 'تم فك تجميد اشتراكك',
+    body: `أهلاً برجوعك! الاشتراك ساري حتى ${new Date(subscription.endDate).toLocaleDateString('ar-EG')}`,
+    meta: { subscriptionId: subscription._id.toString() },
+  });
+
+  return sendSuccess(res, {
+    data: subscription,
+    message: result.usedDays > 0
+      ? `تم فك التجميد (اتحسب ${result.usedDays} يوم تجميد)`
+      : 'تم إلغاء التجميد',
+  });
+};
+
 // ─── GET /:id/payments/:paymentId/receipt ────────────────────────────────────
 /**
  * بيانات إيصال دفعة (للـ PDF). paymentId = 'legacy' للاشتراك القديم بلا سجل
@@ -691,4 +791,7 @@ module.exports = {
   getPlayerReceipts,
   ensureReceiptNumbers,
   shareReceiptImage,
+  freezeSubscription,
+  resumeSubscription,
+  applyResume,
 };

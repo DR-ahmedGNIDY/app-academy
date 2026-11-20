@@ -1,5 +1,21 @@
 const mongoose = require('mongoose');
 const { PAYMENT_METHODS, paymentState } = require('../utils/subscriptionPayments');
+const { FREEZE_REASONS, freezeState } = require('../utils/subscriptionFreeze');
+
+// فترة تجميد (إصابة/سفر…). endDate حصري = بداية يوم الرجوع. تمديد نهاية
+// الاشتراك يتم في الـ controller لحظة التجميد.
+const freezeSchema = new mongoose.Schema(
+  {
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, required: true },
+    days: { type: Number, required: true, min: 0 },
+    reason: { type: String, enum: FREEZE_REASONS, default: 'other' },
+    note: { type: String, trim: true, maxlength: 200 },
+    createdByName: { type: String, trim: true, default: '' },
+    endedEarlyAt: { type: Date, default: null },
+  },
+  { _id: true }
+);
 
 // دفعة واحدة من مبلغ الاشتراك (دفع جزئي / أقساط).
 const paymentSchema = new mongoose.Schema(
@@ -86,6 +102,11 @@ const subscriptionSchema = new mongoose.Schema(
       type: [paymentSchema],
       default: undefined,
     },
+    // فترات التجميد (لا تُحسب أيامها غياباً).
+    freezes: {
+      type: [freezeSchema],
+      default: undefined,
+    },
     // مجموع payments (مُخزَّن لتسريع تقارير المديونيات). غيابه = amount.
     paidAmount: {
       type: Number,
@@ -112,6 +133,9 @@ const subscriptionSchema = new mongoose.Schema(
 
         // حالة الدفع — القديم بلا paidAmount يظهر مدفوعاً بالكامل.
         Object.assign(ret, paymentState(ret));
+        // حالة التجميد: frozen | scheduled | null + التجميد المفتوح.
+        Object.assign(ret, freezeState(ret));
+        ret.freezes = (ret.freezes || []).map((f) => ({ ...f, _id: f._id?.toString() }));
         ret.payments = (ret.payments || []).map(({ shareImagePublicId, shareToken, ...p }) => ({
           ...p,
           _id: p._id?.toString(),
