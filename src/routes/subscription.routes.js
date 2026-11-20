@@ -12,6 +12,7 @@ const {
   addPayment,
   deletePayment,
   getAcademyDebts,
+  getPaymentReceipt,
 } = require('../controllers/subscription.controller');
 const { PAYMENT_METHODS } = require('../utils/subscriptionPayments');
 const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
@@ -117,6 +118,9 @@ router.post('/', requirePermission('record_subscriptions'), createValidators, va
 
 // POST   /subscriptions/:id/payments — تسجيل دفعة (قسط)
 router.post('/:id/payments', requirePermission('record_subscriptions'), paymentValidators, validate, addPayment);
+
+// GET    /subscriptions/:id/payments/:paymentId/receipt — بيانات إيصال الدفع
+router.get('/:id/payments/:paymentId/receipt', getPaymentReceipt);
 
 // DELETE /subscriptions/:id/payments/:paymentId — حذف دفعة مسجّلة بالخطأ
 router.delete('/:id/payments/:paymentId', requirePermission('record_subscriptions'), deletePayment);

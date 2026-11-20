@@ -162,7 +162,69 @@ function groupDebtsByPlayer(subscriptions) {
   };
 }
 
+// ─── Receipts ────────────────────────────────────────────────────────────────
+
+/** اسم عدّاد أرقام الإيصالات — تسلسل مستقل لكل أكاديمية. */
+const receiptCounterName = (academyId) => `receipt:${academyId}`;
+
+/** رقم الإيصال المعروض: 000123. */
+const formatReceiptNo = (n) => (n ? String(n).padStart(6, '0') : '');
+
+/**
+ * بيانات إيصال دفعة واحدة. دالة نقية: تعتمد على payments المرتّبة بالتاريخ
+ * لحساب "المدفوع حتى هذه الدفعة" و"المتبقي بعدها" كما كانا لحظة الدفع.
+ */
+function buildReceipt({ subscription, payment, academy, player }) {
+  const sorted = [...(subscription.payments || [])].sort(
+    (a, b) => new Date(a.date) - new Date(b.date) || String(a._id).localeCompare(String(b._id))
+  );
+  const idx = sorted.findIndex((p) => String(p._id) === String(payment._id));
+  const paidToDate = round2(
+    sorted.slice(0, idx + 1).reduce((s, p) => s + (Number(p.amount) || 0), 0)
+  );
+  const amount = round2(subscription.amount);
+  return {
+    receiptNo: payment.receiptNo ?? null,
+    receiptNoLabel: formatReceiptNo(payment.receiptNo),
+    payment: {
+      _id: String(payment._id),
+      amount: round2(payment.amount),
+      date: payment.date,
+      method: payment.method || 'cash',
+      note: payment.note || '',
+      recordedByName: payment.recordedByName || '',
+    },
+    subscription: {
+      _id: String(subscription._id),
+      type: subscription.type,
+      amount,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate,
+      paidToDate,
+      remainingAfter: Math.max(0, round2(amount - paidToDate)),
+    },
+    player: {
+      _id: player?._id ? String(player._id) : '',
+      fullName: player?.fullName || '',
+      playerCode: player?.playerCode || '',
+      parentName: player?.parentName || '',
+      parentPhone: player?.parentPhone || '',
+      playerPhone: player?.playerPhone || '',
+    },
+    academy: {
+      name: academy?.name || '',
+      logo_url: academy?.logo_url || '',
+      phone: academy?.phone || '',
+      address: academy?.address || '',
+      currency: academy?.currency || 'EGP',
+    },
+  };
+}
+
 module.exports = {
+  receiptCounterName,
+  formatReceiptNo,
+  buildReceipt,
   PAYMENT_METHODS,
   EPSILON,
   round2,

@@ -7,7 +7,32 @@ const {
   resolveInitialPaid,
   groupDebtsByPlayer,
   collectedTotalStages,
+  buildReceipt,
+  formatReceiptNo,
 } = require('../src/utils/subscriptionPayments');
+
+test('receipt shows paid-to-date and remaining as of that payment', () => {
+  const subscription = {
+    _id: 's1', type: 'RENEWAL', amount: 500,
+    startDate: '2026-11-01', endDate: '2026-12-01',
+    payments: [
+      { _id: 'b', amount: 100, date: '2026-11-10', receiptNo: 8, method: 'instapay' },
+      { _id: 'a', amount: 200, date: '2026-11-01', receiptNo: 7 },
+    ],
+  };
+  const r1 = buildReceipt({ subscription, payment: subscription.payments[1], academy: { name: 'X' }, player: { fullName: 'علي' } });
+  assert.strictEqual(r1.subscription.paidToDate, 200);
+  assert.strictEqual(r1.subscription.remainingAfter, 300);
+  assert.strictEqual(r1.receiptNoLabel, '000007');
+  assert.strictEqual(r1.payment.method, 'cash');
+  assert.strictEqual(r1.academy.currency, 'EGP');
+
+  const r2 = buildReceipt({ subscription, payment: subscription.payments[0], academy: null, player: null });
+  assert.strictEqual(r2.subscription.paidToDate, 300);
+  assert.strictEqual(r2.subscription.remainingAfter, 200);
+  assert.strictEqual(r2.payment.method, 'instapay');
+  assert.strictEqual(formatReceiptNo(null), '');
+});
 
 test('legacy subscription without paidAmount counts as fully paid', () => {
   assert.deepStrictEqual(paymentState({ amount: 500 }), {

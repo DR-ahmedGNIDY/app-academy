@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param } = require('express-validator');
 const { getPlayerDashboard } = require('../controllers/playerDashboard.controller');
+const { getPlayerReceipts } = require('../controllers/subscription.controller');
 const { getPlayerConversation, playerSendMessage } = require('../controllers/chat.controller');
 const {
   getPlayerNotifications,
@@ -30,6 +31,9 @@ router.use(protectPlayer);
 
 // GET /api/v1/player/dashboard
 router.get('/dashboard', getPlayerDashboard);
+
+// GET /api/v1/player/receipts — إيصالات دفع اللاعب (الأحدث أولاً)
+router.get('/receipts', getPlayerReceipts);
 
 // ── توكن جهاز اللاعب لإشعارات Push (FCM) ──
 router.post('/device-token', registerPlayerToken);

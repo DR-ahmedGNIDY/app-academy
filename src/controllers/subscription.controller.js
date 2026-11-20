@@ -14,7 +14,45 @@ const {
   collectedTotalStages,
   outstandingTotalStages,
   groupDebtsByPlayer,
+  receiptCounterName,
+  buildReceipt,
 } = require('../utils/subscriptionPayments');
+const Counter = require('../models/counter.model');
+const Academy = require('../models/academy.model');
+
+/** رقم الإيصال التالي لأكاديمية (ذرّي). */
+const nextReceiptNo = (academyId) => Counter.next(receiptCounterName(academyId));
+
+/**
+ * يضمن أن لكل دفعة رقم إيصال. الاشتراك القديم بلا سجل دفعات يُحوَّل لدفعة
+ * واحدة بكامل المدفوع يوم الإنشاء (نفس قاعدة الإيرادات، فلا تتغيّر الأرقام).
+ * يحفظ فقط عند وجود تغيير. يرجّع true لو حفظ.
+ */
+async function ensureReceiptNumbers(subscription) {
+  let changed = false;
+  if (!Array.isArray(subscription.payments) || subscription.payments.length === 0) {
+    const { paidAmount } = paymentState(subscription);
+    if (!Array.isArray(subscription.payments) && paidAmount > 0) {
+      subscription.payments = [{
+        amount: paidAmount, date: subscription.created_at, method: 'cash', note: 'رصيد سابق',
+      }];
+      subscription.paidAmount = paidAmount;
+      changed = true;
+    }
+  }
+  const missing = (subscription.payments || [])
+    .filter((p) => !p.receiptNo)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  for (const p of missing) {
+    p.receiptNo = await nextReceiptNo(subscription.academyId);
+    changed = true;
+  }
+  if (changed) await subscription.save();
+  return changed;
+}
+
+const RECEIPT_PLAYER_FIELDS = 'fullName playerCode parentName parentPhone playerPhone';
+const RECEIPT_ACADEMY_FIELDS = 'name logo_url phone address currency';
 
 /** بيانات من سجّل الدفعة (للعرض في السجل). */
 function recorderOf(req) {
@@ -85,7 +123,10 @@ const createSubscription = async (req, res, next) => {
     notes,
     paidAmount: initial.paid,
     payments: initial.paid > 0
-      ? [{ amount: initial.paid, date: new Date(), method: paymentMethod, ...recorderOf(req) }]
+      ? [{
+        amount: initial.paid, date: new Date(), method: paymentMethod, ...recorderOf(req),
+        receiptNo: await nextReceiptNo(academyId),
+      }]
       : [],
     sessionsLimit: rawLimit === undefined
       ? (player.sessionsLimit || null)
@@ -360,6 +401,7 @@ const addPayment = async (req, res, next) => {
     amount, date, method,
     note: req.body.note ? String(req.body.note).slice(0, 200) : undefined,
     ...recorderOf(req),
+    receiptNo: await nextReceiptNo(subscription.academyId),
   });
   subscription.paidAmount = round2(paidAmount + amount);
   await subscription.save();
@@ -401,6 +443,54 @@ const deletePayment = async (req, res, next) => {
   });
 
   return sendSuccess(res, { data: subscription, message: 'تم حذف الدفعة' });
+};
+
+// ─── GET /:id/payments/:paymentId/receipt ────────────────────────────────────
+/**
+ * بيانات إيصال دفعة (للـ PDF). paymentId = 'legacy' للاشتراك القديم بلا سجل
+ * دفعات ⇒ يُنشأ له سجل ويُرجَع إيصال دفعته الوحيدة.
+ */
+const getPaymentReceipt = async (req, res, next) => {
+  const subscription = await Subscription.findById(req.params.id);
+  if (!subscription) return next(new AppError('الاشتراك غير موجود', 404));
+  if (!canAccessSubscription(req, subscription)) {
+    return next(new AppError('ليس لديك صلاحية للوصول إلى هذا الاشتراك', 403));
+  }
+
+  await ensureReceiptNumbers(subscription);
+  const payment = req.params.paymentId === 'legacy'
+    ? subscription.payments?.[0]
+    : subscription.payments?.id(req.params.paymentId);
+  if (!payment) return next(new AppError('الدفعة غير موجودة', 404));
+
+  const [player, academy] = await Promise.all([
+    Player.findById(subscription.playerId).select(RECEIPT_PLAYER_FIELDS),
+    Academy.findById(subscription.academyId).select(RECEIPT_ACADEMY_FIELDS),
+  ]);
+  return sendSuccess(res, {
+    data: buildReceipt({ subscription, payment, academy, player }),
+    message: 'تم جلب الإيصال',
+  });
+};
+
+// ─── GET /player/receipts (بوابة اللاعب) ─────────────────────────────────────
+/** كل إيصالات اللاعب الحالي، الأحدث أولاً. */
+const getPlayerReceipts = async (req, res) => {
+  const player = req.player;
+  const [subs, academy, fullPlayer] = await Promise.all([
+    Subscription.find({ playerId: player._id }).sort({ startDate: -1 }),
+    Academy.findById(player.academyId).select(RECEIPT_ACADEMY_FIELDS),
+    Player.findById(player._id).select(RECEIPT_PLAYER_FIELDS),
+  ]);
+  const receipts = [];
+  for (const subscription of subs) {
+    await ensureReceiptNumbers(subscription);
+    for (const payment of subscription.payments || []) {
+      receipts.push(buildReceipt({ subscription, payment, academy, player: fullPlayer || player }));
+    }
+  }
+  receipts.sort((a, b) => new Date(b.payment.date) - new Date(a.payment.date));
+  return sendSuccess(res, { data: receipts, message: 'تم جلب الإيصالات' });
 };
 
 // ─── GET /academy/:academyId/debts ───────────────────────────────────────────
@@ -533,4 +623,7 @@ module.exports = {
   addPayment,
   deletePayment,
   getAcademyDebts,
+  getPaymentReceipt,
+  getPlayerReceipts,
+  ensureReceiptNumbers,
 };

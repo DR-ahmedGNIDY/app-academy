@@ -14,6 +14,8 @@ const paymentSchema = new mongoose.Schema(
     note: { type: String, trim: true, maxlength: [200, 'ملاحظة الدفعة طويلة جداً'] },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     recordedByName: { type: String, trim: true, default: '' },
+    // رقم الإيصال (تسلسل لكل أكاديمية). القديم يُرقَّم عند أول طلب لإيصاله.
+    receiptNo: { type: Number, default: null },
   },
   { _id: true }
 );
