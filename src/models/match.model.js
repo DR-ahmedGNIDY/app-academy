@@ -45,6 +45,11 @@ const matchSchema = new mongoose.Schema(
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Player' }],
       default: [],
     },
+    // نتيجة المباراة (اختيارية — تُسجَّل مع الإحصائيات بعد اللعب).
+    opponent: { type: String, trim: true, maxlength: 100, default: '' },
+    ourScore: { type: Number, min: 0, default: null },
+    theirScore: { type: Number, min: 0, default: null },
+    statsRecordedAt: { type: Date, default: null },
     // هل يُحتسب حضور يوم المباراة ضمن حصص اشتراك اللاعب؟
     countsAsSession: { type: Boolean, default: false },
     // هل للمباراة اشتراك يدفعه اللاعب؟ وقيمته (قد تُكتب بعد الإنشاء).
