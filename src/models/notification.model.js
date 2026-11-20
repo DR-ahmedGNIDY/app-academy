@@ -30,6 +30,7 @@ const notificationSchema = new mongoose.Schema(
         'EVALUATION_ADDED',
         'SUBSCRIPTION_RENEWED',
         'SUBSCRIPTION_FROZEN',
+        'NEW_REGISTRATION_REQUEST',
         'SUBSCRIPTION_EXPIRING',
         'SESSIONS_EXHAUSTED',
         'TRAINING_RATING_REQUEST',

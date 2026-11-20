@@ -87,6 +87,14 @@ const academySchema = new mongoose.Schema(
       default: 'EGP',
     },
     // الرياضات الموجودة بالأكاديمية (Multi-sport support).
+    // الفورم الأونلاين العام لتسجيل اللاعبين (/join/:code). مقفول افتراضياً.
+    // sports فارغة = كل رياضات الأكاديمية.
+    onlineRegistration: {
+      enabled: { type: Boolean, default: false },
+      code: { type: String, default: undefined },
+      sports: { type: [String], default: [] },
+      welcomeMessage: { type: String, trim: true, maxlength: 300, default: '' },
+    },
     // قائمة نصية حرّة قابلة للتوسعة مستقبلاً بأي رياضة.
     // الأكاديميات الحالية تُهاجَر تلقائياً إلى رياضة واحدة فيستمر النظام كما هو.
     sports: {
@@ -130,6 +138,8 @@ academySchema.virtual('player_count', {
 });
 
 academySchema.index({ name: 'text' });
+// كود الفورم الأونلاين العام (/join/:code) — فريد للأكاديميات التي فعّلته.
+academySchema.index({ 'onlineRegistration.code': 1 }, { unique: true, sparse: true });
 academySchema.index({ isActive: 1 });
 
 const Academy = mongoose.model('Academy', academySchema);
