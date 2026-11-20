@@ -16,6 +16,11 @@ const paymentSchema = new mongoose.Schema(
     recordedByName: { type: String, trim: true, default: '' },
     // رقم الإيصال (تسلسل لكل أكاديمية). القديم يُرقَّم عند أول طلب لإيصاله.
     receiptNo: { type: Number, default: null },
+    // رابط مشاركة صورة الإيصال (واتساب) — يُحذف بعد 60 يوماً بمهمة دورية.
+    shareToken: { type: String },
+    shareImageUrl: { type: String },
+    shareImagePublicId: { type: String },
+    shareExpiresAt: { type: Date },
   },
   { _id: true }
 );
@@ -107,7 +112,7 @@ const subscriptionSchema = new mongoose.Schema(
 
         // حالة الدفع — القديم بلا paidAmount يظهر مدفوعاً بالكامل.
         Object.assign(ret, paymentState(ret));
-        ret.payments = (ret.payments || []).map((p) => ({
+        ret.payments = (ret.payments || []).map(({ shareImagePublicId, shareToken, ...p }) => ({
           ...p,
           _id: p._id?.toString(),
           recordedBy: p.recordedBy?.toString() ?? null,
@@ -136,6 +141,9 @@ subscriptionSchema.index({ academyId: 1, playerId: 1 });
 subscriptionSchema.index({ endDate: 1 });
 subscriptionSchema.index({ type: 1 });
 subscriptionSchema.index({ academyId: 1, paidAmount: 1 });
+// صفحة الإيصال العامة تبحث بالـ token، ومهمة التنظيف بتاريخ الانتهاء.
+subscriptionSchema.index({ 'payments.shareToken': 1 }, { sparse: true });
+subscriptionSchema.index({ 'payments.shareExpiresAt': 1 }, { sparse: true });
 
 const Subscription = mongoose.model('Subscription', subscriptionSchema);
 module.exports = Subscription;

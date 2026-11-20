@@ -27,6 +27,8 @@ const staffAttendanceRoutes = require('./routes/staffAttendance.routes');
 const payrollRoutes = require('./routes/payroll.routes');
 const expenseRoutes = require('./routes/expense.routes');
 const financeRoutes = require('./routes/finance.routes');
+const receiptPublicRoutes = require('./routes/receiptPublic.routes');
+const { startReceiptShareCleanup } = require('./utils/receiptShareCleanup');
 // منصة Nosait SaaS
 const platformSubscriptionRoutes = require('./routes/platformSubscription.routes');
 const playerAuthRoutes = require('./routes/playerAuth.routes');
@@ -117,6 +119,8 @@ app.use('/api/v1/staff-attendance', staffAttendanceRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
 app.use('/api/v1/finance', financeRoutes);
+// صفحة إيصال عامة (رابط واتساب بمعاينة الصورة) — خارج /api/v1 عمداً.
+app.use('/r', receiptPublicRoutes);
 app.use('/api/v1/platform/subscriptions', platformSubscriptionRoutes);
 app.use('/api/v1/auth/player', playerAuthRoutes);
 app.use('/api/v1/player', playerPortalRoutes);
@@ -135,6 +139,7 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   startTrainingRatingScheduler();
   startMatchAttendanceScheduler();
+  startReceiptShareCleanup();
   logger.info(`🚀 الخادم يعمل على المنفذ ${PORT} في بيئة ${process.env.NODE_ENV}`);
 });
 

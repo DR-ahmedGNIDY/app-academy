@@ -13,7 +13,20 @@ const {
   deletePayment,
   getAcademyDebts,
   getPaymentReceipt,
+  shareReceiptImage,
 } = require('../controllers/subscription.controller');
+const multer = require('multer');
+
+// صورة الإيصال للمشاركة: في الذاكرة ثم Cloudinary من الـ controller
+// (لا رفع لو للدفعة رابط صالح بالفعل). PNG/JPEG فقط، حد 3MB.
+const uploadReceiptImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (['image/png', 'image/jpeg'].includes(file.mimetype)) return cb(null, true);
+    return cb(new Error('صيغة صورة الإيصال غير مدعومة'));
+  },
+});
 const { PAYMENT_METHODS } = require('../utils/subscriptionPayments');
 const { protect, restrictTo, requirePermission } = require('../middleware/auth.middleware');
 const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
@@ -121,6 +134,14 @@ router.post('/:id/payments', requirePermission('record_subscriptions'), paymentV
 
 // GET    /subscriptions/:id/payments/:paymentId/receipt — بيانات إيصال الدفع
 router.get('/:id/payments/:paymentId/receipt', getPaymentReceipt);
+
+// POST   /subscriptions/:id/payments/:paymentId/share — رابط عام لصورة الإيصال (60 يوم)
+router.post(
+  '/:id/payments/:paymentId/share',
+  requirePermission('record_subscriptions'),
+  uploadReceiptImage.single('image'),
+  shareReceiptImage
+);
 
 // DELETE /subscriptions/:id/payments/:paymentId — حذف دفعة مسجّلة بالخطأ
 router.delete('/:id/payments/:paymentId', requirePermission('record_subscriptions'), deletePayment);

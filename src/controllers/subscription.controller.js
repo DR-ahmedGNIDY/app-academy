@@ -19,6 +19,27 @@ const {
 } = require('../utils/subscriptionPayments');
 const Counter = require('../models/counter.model');
 const Academy = require('../models/academy.model');
+const { cloudinary } = require('../config/cloudinary');
+const {
+  SHARE_TTL_MS,
+  RECEIPTS_FOLDER,
+  newShareToken,
+  shareUrlFor,
+  hasValidShare,
+} = require('../utils/receiptShare');
+const {
+  destroyShareImage,
+  destroySubscriptionShareImages,
+} = require('../utils/receiptShareCleanup');
+
+/** يرفع صورة (Buffer) لـ Cloudinary ويرجّع { secure_url, public_id }. */
+const uploadImageBuffer = (buffer, options) => new Promise((resolve, reject) => {
+  const stream = cloudinary.uploader.upload_stream(
+    { resource_type: 'image', ...options },
+    (err, result) => (err ? reject(err) : resolve(result))
+  );
+  stream.end(buffer);
+});
 
 /** رقم الإيصال التالي لأكاديمية (ذرّي). */
 const nextReceiptNo = (academyId) => Counter.next(receiptCounterName(academyId));
@@ -197,6 +218,7 @@ const deleteSubscription = async (req, res, next) => {
   }
 
   await Subscription.deleteOne({ _id: subscription._id });
+  destroySubscriptionShareImages(subscription); // صور روابط الإيصالات (fire-and-forget)
 
   const subPlayer = await Player.findById(subscription.playerId).select('fullName');
   logger.info(`Subscription deleted: ${subscription._id}`);
@@ -429,6 +451,7 @@ const deletePayment = async (req, res, next) => {
   const payment = subscription.payments?.id(req.params.paymentId);
   if (!payment) return next(new AppError('الدفعة غير موجودة', 404));
 
+  if (payment.shareImagePublicId) destroyShareImage(payment.shareImagePublicId);
   payment.deleteOne();
   subscription.paidAmount = round2(
     subscription.payments.reduce((sum, p) => sum + (p.amount || 0), 0)
@@ -470,6 +493,47 @@ const getPaymentReceipt = async (req, res, next) => {
   return sendSuccess(res, {
     data: buildReceipt({ subscription, payment, academy, player }),
     message: 'تم جلب الإيصال',
+  });
+};
+
+// ─── POST /:id/payments/:paymentId/share ─────────────────────────────────────
+/**
+ * رابط عام لصورة الإيصال (لرسالة واتساب بمعاينة الصورة). الجهاز يرسل صورة
+ * الإيصال (PNG) في الحقل image. لو للدفعة رابط صالح بالفعل يُعاد كما هو بلا
+ * رفع جديد. الصلاحية 60 يوماً ثم تُحذف الصورة تلقائياً.
+ */
+const shareReceiptImage = async (req, res, next) => {
+  const subscription = await Subscription.findById(req.params.id);
+  if (!subscription) return next(new AppError('الاشتراك غير موجود', 404));
+  if (!canAccessSubscription(req, subscription)) {
+    return next(new AppError('ليس لديك صلاحية للوصول إلى هذا الاشتراك', 403));
+  }
+
+  await ensureReceiptNumbers(subscription);
+  const payment = req.params.paymentId === 'legacy'
+    ? subscription.payments?.[0]
+    : subscription.payments?.id(req.params.paymentId);
+  if (!payment) return next(new AppError('الدفعة غير موجودة', 404));
+
+  if (!hasValidShare(payment)) {
+    if (!req.file) return next(new AppError('صورة الإيصال مطلوبة', 400));
+    const oldPublicId = payment.shareImagePublicId;
+    const uploaded = await uploadImageBuffer(req.file.buffer, {
+      folder: RECEIPTS_FOLDER,
+      public_id: `receipt_${subscription.academyId}_${payment.receiptNo || payment._id}_${Date.now()}`,
+      transformation: [{ width: 1200, crop: 'limit' }, { quality: 'auto' }],
+    });
+    payment.shareToken = newShareToken();
+    payment.shareImageUrl = uploaded.secure_url;
+    payment.shareImagePublicId = uploaded.public_id;
+    payment.shareExpiresAt = new Date(Date.now() + SHARE_TTL_MS);
+    await subscription.save();
+    if (oldPublicId) destroyShareImage(oldPublicId); // صورة منتهية قديمة (fire-and-forget)
+  }
+
+  return sendSuccess(res, {
+    data: { url: shareUrlFor(req, payment.shareToken), expiresAt: payment.shareExpiresAt },
+    message: 'تم تجهيز رابط الإيصال',
   });
 };
 
@@ -626,4 +690,5 @@ module.exports = {
   getPaymentReceipt,
   getPlayerReceipts,
   ensureReceiptNumbers,
+  shareReceiptImage,
 };
