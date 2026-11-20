@@ -26,6 +26,7 @@ const staffRoutes = require('./routes/staff.routes');
 const staffAttendanceRoutes = require('./routes/staffAttendance.routes');
 const payrollRoutes = require('./routes/payroll.routes');
 const expenseRoutes = require('./routes/expense.routes');
+const financeRoutes = require('./routes/finance.routes');
 // منصة Nosait SaaS
 const platformSubscriptionRoutes = require('./routes/platformSubscription.routes');
 const playerAuthRoutes = require('./routes/playerAuth.routes');
@@ -115,6 +116,7 @@ app.use('/api/v1/staff', staffRoutes);
 app.use('/api/v1/staff-attendance', staffAttendanceRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
+app.use('/api/v1/finance', financeRoutes);
 app.use('/api/v1/platform/subscriptions', platformSubscriptionRoutes);
 app.use('/api/v1/auth/player', playerAuthRoutes);
 app.use('/api/v1/player', playerPortalRoutes);
