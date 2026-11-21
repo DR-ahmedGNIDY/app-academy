@@ -18,6 +18,35 @@ const isSuper = (req) => req.user?.role === 'super_admin';
 const sameAcademy = (req, academyId) => isSuper(req) || String(academyId) === String(req.user?.academyId);
 const resolveAcademyId = (req) => (isSuper(req) ? req.query.academyId || req.body?.academyId : req.user.academyId);
 
+const FALLBACK_SPORT = 'كرة سلة';
+
+/** رياضة الأكاديمية الافتراضية (أول رياضة مسجّلة) أو null. */
+async function academyDefaultSport(academyId) {
+  const academy = await Academy.findById(academyId).select('sports').lean();
+  return academy?.sports?.find((s) => String(s || '').trim()) || null;
+}
+
+/**
+ * رياضة المباراة الفعلية. أكاديميات الرياضة الواحدة تُنشئ مباريات بلا sport،
+ * فنستنتجها: رياضة الأكاديمية ← الرياضة الأكثر بين لاعبي المباراة ← كرة سلة.
+ */
+async function effectiveMatchSport(match) {
+  if (match.sport && String(match.sport).trim()) return match.sport;
+  const fromAcademy = await academyDefaultSport(match.academyId);
+  if (fromAcademy) return fromAcademy;
+  const players = await Player.find({ _id: { $in: match.playerIds } }).select('sport').lean();
+  const counts = {};
+  for (const p of players) if (p.sport) counts[p.sport] = (counts[p.sport] || 0) + 1;
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return top ? top[0] : FALLBACK_SPORT;
+}
+
+/** رياضة اللاعب الفعلية: رياضته ← رياضة الأكاديمية ← آخر إحصائياته ← كرة سلة. */
+async function effectivePlayerSport(player, rows) {
+  if (player.sport && String(player.sport).trim()) return player.sport;
+  return (await academyDefaultSport(player.academyId)) || rows[0]?.sport || FALLBACK_SPORT;
+}
+
 // ─── GET /match-stats/templates[?sport=] ─────────────────────────────────────
 const getTemplates = async (req, res) => {
   if (req.query.sport) {
@@ -28,7 +57,7 @@ const getTemplates = async (req, res) => {
 
 /** بيانات شاشة إحصائيات مباراة: القالب + كل لاعبي المباراة + إحصائياتهم. */
 async function matchStatsPayload(match) {
-  const template = templateForSport(match.sport);
+  const template = templateForSport(await effectiveMatchSport(match));
   const [players, stats] = await Promise.all([
     Player.find({ _id: { $in: match.playerIds } }).select('fullName playerCode image_url').lean(),
     MatchStat.find({ matchId: match._id }).lean(),
@@ -52,7 +81,7 @@ async function matchStatsPayload(match) {
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
   return {
     match: {
-      _id: String(match._id), name: match.name, date: match.date, sport: match.sport,
+      _id: String(match._id), name: match.name, date: match.date, sport: template.sport,
       opponent: match.opponent || '', ourScore: match.ourScore ?? null, theirScore: match.theirScore ?? null,
       statsRecordedAt: match.statsRecordedAt || null,
     },
@@ -88,7 +117,7 @@ const saveMatchStats = async (req, res, next) => {
   if (ours !== undefined) match.ourScore = ours;
   if (theirs !== undefined) match.theirScore = theirs;
 
-  const template = templateForSport(match.sport);
+  const template = templateForSport(await effectiveMatchSport(match));
   const inMatch = new Set(match.playerIds.map(String));
   const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
   let mvpTaken = false;
@@ -136,8 +165,8 @@ async function playerStatsPayload(player) {
     .sort({ matchDate: -1, created_at: -1 })
     .populate('matchId', 'name date opponent ourScore theirScore sport')
     .lean();
-  const sport = player.sport || rows[0]?.sport || '';
-  const template = templateForSport(sport);
+  const template = templateForSport(await effectivePlayerSport(player, rows));
+  const sport = template.sport;
   const sameTemplate = rows.filter((r) => r.templateKey === template.key);
   const summary = summarizePlayerStats(template, sameTemplate);
   const recent = sameTemplate.slice(0, 15).map((r) => ({
@@ -201,11 +230,7 @@ async function leaderboardPayload(academyId, sport, fieldKey) {
 const getLeaderboard = async (req, res, next) => {
   const academyId = resolveAcademyId(req);
   if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-  let { sport } = req.query;
-  if (!sport) {
-    const academy = await Academy.findById(academyId).select('sports');
-    sport = academy?.sports?.[0] || 'كرة سلة';
-  }
+  const sport = req.query.sport || (await academyDefaultSport(academyId)) || FALLBACK_SPORT;
   return sendSuccess(res, { data: await leaderboardPayload(academyId, sport, req.query.field), message: 'ترتيب الأكاديمية' });
 };
 
@@ -217,8 +242,9 @@ const getMyStats = async (req, res) => {
 
 const getMyLeaderboard = async (req, res) => {
   const player = await Player.findById(req.player._id).select('sport academyId');
+  const sport = player.sport || (await academyDefaultSport(player.academyId)) || FALLBACK_SPORT;
   return sendSuccess(res, {
-    data: await leaderboardPayload(player.academyId, player.sport || 'كرة سلة', req.query.field),
+    data: await leaderboardPayload(player.academyId, sport, req.query.field),
     message: 'ترتيب الأكاديمية',
   });
 };
