@@ -5,6 +5,7 @@ const {
   activateSubscription,
   updateSubscription,
   setPlayerPortal,
+  setAiAssistant,
   getSubscriptionHistory,
 } = require('../controllers/platformSubscription.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
@@ -32,6 +33,12 @@ const updateValidators = [
   body('playerPortalEnabled').optional().isBoolean().withMessage('قيمة بوابة اللاعب غير صحيحة'),
 ];
 
+const aiValidators = [
+  param('academyId').isMongoId().withMessage('معرّف الأكاديمية غير صحيح'),
+  body('enabled').optional().isBoolean().withMessage('قيمة التفعيل غير صحيحة'),
+  body('dailyLimit').optional().isInt({ min: 1, max: 1000 }).withMessage('الحد اليومي يجب أن يكون بين 1 و 1000'),
+];
+
 const portalValidators = [
   param('academyId').isMongoId().withMessage('معرّف الأكاديمية غير صحيح'),
   body('enabled').isBoolean().withMessage('قيمة التفعيل غير صحيحة'),
@@ -48,6 +55,9 @@ router.post('/:academyId/activate', activateValidators, validate, activateSubscr
 
 // PATCH /platform/subscriptions/:academyId/player-portal — تبديل سريع لبوابة اللاعب
 router.patch('/:academyId/player-portal', portalValidators, validate, setPlayerPortal);
+
+// المساعد الذكي: تفعيل/تعطيل + الحد اليومي للرسائل
+router.patch('/:academyId/ai-assistant', aiValidators, validate, setAiAssistant);
 
 // PATCH /platform/subscriptions/:academyId
 router.patch('/:academyId', updateValidators, validate, updateSubscription);

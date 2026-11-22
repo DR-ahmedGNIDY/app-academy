@@ -31,6 +31,7 @@ const receiptPublicRoutes = require('./routes/receiptPublic.routes');
 const joinPublicRoutes = require('./routes/joinPublic.routes');
 const registrationRequestRoutes = require('./routes/registrationRequest.routes');
 const matchStatsRoutes = require('./routes/matchStats.routes');
+const assistantRoutes = require('./routes/assistant.routes');
 const { startReceiptShareCleanup } = require('./utils/receiptShareCleanup');
 // منصة Nosait SaaS
 const platformSubscriptionRoutes = require('./routes/platformSubscription.routes');
@@ -128,6 +129,8 @@ app.use('/r', receiptPublicRoutes);
 app.use('/join', joinPublicRoutes);
 app.use('/api/v1/registration-requests', registrationRequestRoutes);
 app.use('/api/v1/match-stats', matchStatsRoutes);
+// المساعد الذكي (ChatGPT) — ميزة مدفوعة لمدير الأكاديمية.
+app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/platform/subscriptions', platformSubscriptionRoutes);
 app.use('/api/v1/auth/player', playerAuthRoutes);
 app.use('/api/v1/player', playerPortalRoutes);

@@ -15,6 +15,8 @@ const historyEntrySchema = new mongoose.Schema(
         'CREATED_TRIAL', 'ACTIVATED', 'UPDATED', 'SUSPENDED', 'REACTIVATED', 'MIGRATED',
         // Player Portal feature toggle (إضافي — لا يغيّر القيم القديمة)
         'PORTAL_ENABLED', 'PORTAL_DISABLED',
+        // المساعد الذكي (ميزة مدفوعة)
+        'AI_ENABLED', 'AI_DISABLED', 'AI_LIMIT_CHANGED',
       ],
       required: true,
     },
@@ -82,6 +84,18 @@ const academySubscriptionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // المساعد الذكي (ChatGPT) لمدير الأكاديمية — ميزة مدفوعة يفعّلها Super Admin
+    // يدوياً، مع حد أقصى لعدد الرسائل في اليوم (بتوقيت القاهرة).
+    aiAssistantEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    aiDailyLimit: {
+      type: Number,
+      min: [1, 'الحد اليومي يجب أن يكون 1 على الأقل'],
+      max: [1000, 'الحد اليومي لا يمكن أن يتجاوز 1000'],
+      default: 30,
+    },
     history: {
       type: [historyEntrySchema],
       default: [],
@@ -123,6 +137,11 @@ academySubscriptionSchema.methods.isWritable = function () {
 // انتهاء الاشتراك (حتى التجريبي) يوقف البوابة تلقائياً.
 academySubscriptionSchema.methods.isPlayerPortalActive = function () {
   return this.playerPortalEnabled === true && this.isWritable();
+};
+
+// هل المساعد الذكي متاح الآن؟ مفعّل + اشتراك حي (trial/active).
+academySubscriptionSchema.methods.isAiAssistantActive = function () {
+  return this.aiAssistantEnabled === true && this.isWritable();
 };
 
 // الأيام المتبقية حتى نهاية الاشتراك (0 إذا انتهى).

@@ -51,6 +51,8 @@ const buildRow = (academy, sub, playerCount) => {
           endDate: s.endDate,
           daysRemaining: s.daysRemaining,
           playerPortalEnabled: s.playerPortalEnabled === true,
+          aiAssistantEnabled: s.aiAssistantEnabled === true,
+          aiDailyLimit: s.aiDailyLimit ?? 30,
         }
       : null,
   };
@@ -258,6 +260,58 @@ const setPlayerPortal = async (req, res, next) => {
   });
 };
 
+// PATCH /api/v1/platform/subscriptions/:academyId/ai-assistant
+// body: { enabled?: boolean, dailyLimit?: number } — المساعد الذكي (ميزة مدفوعة)
+const setAiAssistant = async (req, res, next) => {
+  const { academyId } = req.params;
+  const academy = await Academy.findById(academyId).select('name');
+  if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
+
+  const sub = await ensureSubscription(academyId);
+  const now = new Date();
+  const base = {
+    plan: sub.plan, maxPlayers: sub.maxPlayers, startDate: sub.startDate, endDate: sub.endDate,
+    changedBy: req.user._id, changedByName: req.user.name || '', changedAt: now,
+  };
+  const messages = [];
+
+  if (req.body.enabled !== undefined) {
+    const enabled = req.body.enabled === true || req.body.enabled === 'true';
+    if (enabled !== (sub.aiAssistantEnabled === true)) {
+      sub.aiAssistantEnabled = enabled;
+      sub.history.push({
+        ...base,
+        action: enabled ? 'AI_ENABLED' : 'AI_DISABLED',
+        note: enabled ? 'تفعيل المساعد الذكي' : 'تعطيل المساعد الذكي',
+      });
+    }
+    messages.push(enabled ? 'تم تفعيل المساعد الذكي' : 'تم تعطيل المساعد الذكي');
+  }
+  if (req.body.dailyLimit !== undefined) {
+    const limit = parseInt(req.body.dailyLimit, 10);
+    if (limit !== sub.aiDailyLimit) {
+      sub.history.push({ ...base, action: 'AI_LIMIT_CHANGED', note: `الحد اليومي ${sub.aiDailyLimit ?? 30} ← ${limit}` });
+      sub.aiDailyLimit = limit;
+    }
+    messages.push(`الحد اليومي ${limit} رسالة`);
+  }
+  await sub.save();
+
+  logger.info(`AI assistant updated for academy ${academyId}: enabled=${sub.aiAssistantEnabled} limit=${sub.aiDailyLimit}`);
+  logActivity(req, {
+    actionType: 'UPDATE_SUBSCRIPTION',
+    entityType: 'PLATFORM_SUBSCRIPTION',
+    entityId: sub._id,
+    entityName: academy.name,
+    academyId,
+  });
+
+  return sendSuccess(res, {
+    data: buildRow(academy, sub, undefined).subscription,
+    message: messages.join(' — ') || 'لا توجد تغييرات',
+  });
+};
+
 // GET /api/v1/platform/subscriptions/:academyId/history
 const getSubscriptionHistory = async (req, res, next) => {
   const { academyId } = req.params;
@@ -271,5 +325,6 @@ module.exports = {
   activateSubscription,
   updateSubscription,
   setPlayerPortal,
+  setAiAssistant,
   getSubscriptionHistory,
 };
