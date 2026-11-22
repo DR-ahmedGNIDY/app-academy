@@ -14,7 +14,7 @@ const MAX_MESSAGE_CHARS = 1000;
 const HISTORY_FOR_MODEL = 12; // آخر رسائل تُرسل كسياق
 const MAX_STORED = 60; // أقصى رسائل محفوظة في المحادثة
 const MAX_TOOL_ROUNDS = 5;
-const DEFAULT_LIMIT = 30;
+const DEFAULT_LIMIT = 15;
 
 const CURRENCY_LABEL = { EGP: 'جنيه', USD: 'دولار', SAR: 'ريال', AED: 'درهم', KWD: 'دينار' };
 

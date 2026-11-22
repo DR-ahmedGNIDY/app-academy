@@ -52,7 +52,7 @@ const buildRow = (academy, sub, playerCount) => {
           daysRemaining: s.daysRemaining,
           playerPortalEnabled: s.playerPortalEnabled === true,
           aiAssistantEnabled: s.aiAssistantEnabled === true,
-          aiDailyLimit: s.aiDailyLimit ?? 30,
+          aiDailyLimit: s.aiDailyLimit ?? 15,
         }
       : null,
   };
@@ -290,7 +290,7 @@ const setAiAssistant = async (req, res, next) => {
   if (req.body.dailyLimit !== undefined) {
     const limit = parseInt(req.body.dailyLimit, 10);
     if (limit !== sub.aiDailyLimit) {
-      sub.history.push({ ...base, action: 'AI_LIMIT_CHANGED', note: `الحد اليومي ${sub.aiDailyLimit ?? 30} ← ${limit}` });
+      sub.history.push({ ...base, action: 'AI_LIMIT_CHANGED', note: `الحد اليومي ${sub.aiDailyLimit ?? 15} ← ${limit}` });
       sub.aiDailyLimit = limit;
     }
     messages.push(`الحد اليومي ${limit} رسالة`);

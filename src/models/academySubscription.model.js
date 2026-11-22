@@ -94,7 +94,7 @@ const academySubscriptionSchema = new mongoose.Schema(
       type: Number,
       min: [1, 'الحد اليومي يجب أن يكون 1 على الأقل'],
       max: [1000, 'الحد اليومي لا يمكن أن يتجاوز 1000'],
-      default: 30,
+      default: 15,
     },
     history: {
       type: [historyEntrySchema],
